@@ -19,4 +19,4 @@ go build
 
 Run with `-short` to skip database integration tests.
 
-To run database integration tests, you must set the environment variable `DB_TEST_URL` to the URL of an *empty* MySQL database. The test cases will provision the up-to-date schema in the database. As some tests check for an out-of-date schema, these may fail if your database is not empty to begin with.
+To run database integration tests, you must set the environment variable `DB_TEST_URL` to a connection string for a MySQL database, with credentials that have privileges to create databases and users. The test cases will provision a test user `pac_test` and up-to-date schema in the database.

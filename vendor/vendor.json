@@ -127,6 +127,12 @@
 			"revisionTime": "2016-11-28T21:05:44Z"
 		},
 		{
+			"checksumSHA1": "HUXE+Nrcau8FSaVEvPYHMvDjxOE=",
+			"path": "github.com/satori/go.uuid",
+			"revision": "5bf94b69c6b68ee1b541973bb8e1144db23a194b",
+			"revisionTime": "2017-03-21T23:07:31Z"
+		},
+		{
 			"checksumSHA1": "8nOCTgKSFATcBfOV4+uKtXCrZv4=",
 			"path": "github.com/sirupsen/logrus",
 			"revision": "f006c2ac4710855cf0f916dd6b77acf6b048dc6e",
@@ -151,6 +157,22 @@
 		{
 			"checksumSHA1": "2317NjgW/wn/UHMRGbfYyZkhoKM=",
 			"path": "github.com/stretchr/testify/mock",
+			"revision": "69483b4bd14f5845b5a1e55bca19e954e827f1d0",
+			"revisionTime": "2016-09-25T01:54:16Z",
+			"version": "v1.1.4",
+			"versionExact": "v1.1.4"
+		},
+		{
+			"checksumSHA1": "ijg28hsp/vqFRrJnicpz0AdSIFk=",
+			"path": "github.com/stretchr/testify/require",
+			"revision": "69483b4bd14f5845b5a1e55bca19e954e827f1d0",
+			"revisionTime": "2016-09-25T01:54:16Z",
+			"version": "v1.1.4",
+			"versionExact": "v1.1.4"
+		},
+		{
+			"checksumSHA1": "DYSpN7qnGi7YtLv17YIh7HvM1wQ=",
+			"path": "github.com/stretchr/testify/suite",
 			"revision": "69483b4bd14f5845b5a1e55bca19e954e827f1d0",
 			"revisionTime": "2016-09-25T01:54:16Z",
 			"version": "v1.1.4",
