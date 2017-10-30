@@ -19,6 +19,10 @@ type ServiceTestSuite struct {
 	dbUrl string
 }
 
+const (
+	errVersionMismatch = "Database schema is mismatched to this service"
+)
+
 func TestServiceTestSuite(t *testing.T) {
 	testSuite := ServiceTestSuite{}
 	testSuite.dbAdminUrl = getDatabaseURL(t)
@@ -111,7 +115,37 @@ func (s *ServiceTestSuite) TestSchemaMigrate() {
 
 	msg, err := srv.SchemaCheck()
 	assert.EqualError(s.T(), err, fmt.Sprintf("migrating database from 0 to %d is required", requiredVersion))
-	assert.Equal(s.T(), "Database schema is mismatched to this service", msg)
+	assert.Equal(s.T(), errVersionMismatch, msg)
+
+	// lock in an independent session
+	adminConn, _ := Connect(s.dbAdminUrl)
+	defer adminConn.Close()
+
+	var locked int
+	lock, err := adminConn.Query("SELECT get_lock(?, 1)", dbLockName)
+	require.NoError(s.T(), err, "admin connection was unable to obtain a lock")
+	defer lock.Close()
+	lock.Next()
+	lock.Scan(&locked)
+	lock.Close()
+	require.Equal(s.T(), 1, locked, "admin connection was unable to obtain a lock")
+	defer adminConn.Exec("SELECT release_lock(?)", dbLockName)
+
+	// try to migrate but another connection has an exclusive lock
+	srv = NewService(conn, true)
+
+	msg, err = srv.SchemaCheck()
+	assert.EqualError(s.T(), err, fmt.Sprintf("migrating database from 0 to %d failed", requiredVersion))
+	assert.Equal(s.T(), errVersionMismatch, msg)
+
+	var unlocked int
+	unlock, err := adminConn.Query("SELECT release_lock(?)", dbLockName)
+	require.NoError(s.T(), err, "admin connection was unable to release a lock")
+	defer unlock.Close()
+	unlock.Next()
+	unlock.Scan(&unlocked)
+	unlock.Close()
+	require.Equal(s.T(), 1, unlocked, "admin connection was unable to release a lock")
 
 	// now, reconnect and migrate
 	srv = NewService(conn, true)

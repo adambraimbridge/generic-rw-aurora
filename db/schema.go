@@ -18,6 +18,8 @@ type migration struct {
 	rollback string
 }
 
+const dbLockName = "goose"
+
 var (
 	migrations = []migration{
 		{1, "initial-annotations-tables",
@@ -67,7 +69,7 @@ func (service *auroraRW) migrate(apply bool) error {
 	if requiredVersion > currentVersion {
 		if apply {
 			log.WithFields(log.Fields{"from": currentVersion, "to": requiredVersion}).Info("migrating database")
-			err = goose.UpTo(service.conn, ".", requiredVersion)
+			err = doMigrate(service.conn)
 			if err != nil {
 				log.WithError(err).Errorf("migrating database from %v to %v failed", currentVersion, requiredVersion)
 				err = errors.New(fmt.Sprintf("migrating database from %v to %v failed", currentVersion, requiredVersion))
@@ -85,6 +87,28 @@ func (service *auroraRW) migrate(apply bool) error {
 	}
 
 	return err
+}
+
+func doMigrate(conn *sql.DB) error {
+	var locked int
+	lock, err := conn.Query("SELECT get_lock(?, 1)", dbLockName)
+	if err != nil {
+		log.WithError(err).Info("unable to obtain database lock")
+		return err
+	}
+
+	defer lock.Close()
+	lock.Next()
+	lock.Scan(&locked)
+	if locked != 1 {
+		msg := "unable to obtain database lock"
+		log.Info(msg)
+		return errors.New(msg)
+	}
+
+	defer conn.Exec("SELECT release_lock(?)", dbLockName)
+
+	return goose.UpTo(conn, ".", requiredVersion)
 }
 
 func exec(sqlStatements string) func(*sql.Tx) error {
