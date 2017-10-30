@@ -19,7 +19,7 @@ RUN apk --update add git go libc-dev ca-certificates \
   && go get -u github.com/kardianos/govendor \
   && $GOPATH/bin/govendor sync \
   && go build -ldflags="${LDFLAGS}" \
-  && mv generic-rw-aurora/generic-rw-aurora-app \
+  && mv generic-rw-aurora /generic-rw-aurora-app \
   && apk del go git libc-dev \
   && rm -rf $GOPATH /var/cache/apk/* /generic-rw-aurora
 
