@@ -59,3 +59,11 @@ jobs:
       - run:
           name: Build Dockerfile
           command: docker build .
+workflows:
+  version: 2
+  test-and-build-docker:
+    jobs:
+      - build
+      - dockerfile:
+          requires:
+            - build
