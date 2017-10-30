@@ -2,7 +2,7 @@ FROM alpine:3.5
 
 COPY . .git /generic-rw-aurora/
 
-RUN apk --update add git go ca-certificates \
+RUN apk --update add git go libc-dev ca-certificates \
   && export GOPATH=/gopath \
   && REPO_PATH="github.com/Financial-Times/generic-rw-aurora" \
   && mkdir -p $GOPATH/src/${REPO_PATH} \
@@ -20,7 +20,7 @@ RUN apk --update add git go ca-certificates \
   && $GOPATH/bin/govendor sync \
   && go build -ldflags="${LDFLAGS}" \
   && mv generic-rw-aurora/generic-rw-aurora-app \
-  && apk del go git \
+  && apk del go git libc-dev \
   && rm -rf $GOPATH /var/cache/apk/* /generic-rw-aurora
 
 CMD [ "/generic-rw-aurora-app" ]
