@@ -5,8 +5,10 @@ import (
 	"os"
 
 	api "github.com/Financial-Times/api-endpoint"
+	"github.com/Financial-Times/generic-rw-aurora/config"
 	"github.com/Financial-Times/generic-rw-aurora/db"
 	"github.com/Financial-Times/generic-rw-aurora/health"
+	"github.com/Financial-Times/generic-rw-aurora/resources"
 	"github.com/Financial-Times/http-handlers-go/httphandlers"
 	status "github.com/Financial-Times/service-status-go/httphandlers"
 	"github.com/husobee/vestigo"
@@ -58,6 +60,13 @@ func main() {
 		EnvVar: "DB_PERFORM_SCHEMA_MIGRATIONS",
 	})
 
+	rwYml := app.String(cli.StringOpt{
+		Name:   "rw-config",
+		Value:  "./config.yml",
+		Desc:   "Location of the RW configuration YML file.",
+		EnvVar: "RW_CONFIG",
+	})
+
 	apiYml := app.String(cli.StringOpt{
 		Name:   "api-yml",
 		Value:  "./api.yml",
@@ -71,16 +80,21 @@ func main() {
 	app.Action = func() {
 		log.Infof("System code: %s, App Name: %s, Port: %s", *appSystemCode, *appName, *port)
 
+		rwConfig, err := config.ReadConfig(*rwYml)
+		if err != nil {
+			log.WithError(err).Fatal("unable to read r/w YAML configuration")
+		}
+
 		conn, err := db.Connect(*dbURL)
 		if err != nil {
 			log.WithError(err).Error("unable to connect to database")
 		}
 
-		rw := db.NewService(conn, *performSchemaMigrations)
+		rw := db.NewService(conn, *performSchemaMigrations, rwConfig)
 
 		healthService := health.NewHealthService(*appSystemCode, *appName, appDescription, rw)
 
-		serveEndpoints(*port, apiYml, rw, healthService)
+		serveEndpoints(*port, apiYml, rwConfig, rw, healthService)
 	}
 
 	err := app.Run(os.Args)
@@ -89,7 +103,7 @@ func main() {
 	}
 }
 
-func serveEndpoints(port string, apiYml *string, db db.AuroraRWService, healthService *health.HealthService) {
+func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWService, healthService *health.HealthService) {
 	r := vestigo.NewRouter()
 
 	var monitoringRouter http.Handler = r
@@ -99,6 +113,12 @@ func serveEndpoints(port string, apiYml *string, db db.AuroraRWService, healthSe
 	r.Get("/__health", healthService.HealthCheckHandleFunc())
 	r.Get(status.GTGPath, status.NewGoodToGoHandler(healthService.GTG))
 	r.Get(status.BuildInfoPath, status.BuildInfoHandler)
+
+	for path, cfg := range rw.Paths {
+		r.Get(path, resources.Read(db, cfg.Table))
+		r.Put(path, resources.Write(db, cfg.Table))
+		log.WithField("path", path).WithField("table", cfg.Table).Info("added r/w endpoint")
+	}
 
 	http.Handle("/", monitoringRouter)
 
