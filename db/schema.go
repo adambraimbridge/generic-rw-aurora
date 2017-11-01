@@ -18,7 +18,12 @@ type migration struct {
 	rollback string
 }
 
-const dbLockName = "goose"
+const (
+	dbLockName = "goose"
+
+	ErrDbLockFailure = "unable to obtain database lock"
+	ErrDbReleaseLockFailure = "unable to release database lock"
+)
 
 var (
 	migrations = []migration{
@@ -101,14 +106,29 @@ func doMigrate(conn *sql.DB) error {
 	lock.Next()
 	lock.Scan(&locked)
 	if locked != 1 {
-		msg := "unable to obtain database lock"
-		log.Info(msg)
-		return errors.New(msg)
+		log.Warn(ErrDbLockFailure)
+		return errors.New(ErrDbLockFailure)
 	}
 
-	defer conn.Exec("SELECT release_lock(?)", dbLockName)
+	defer releaseLock(conn)
 
 	return goose.UpTo(conn, ".", requiredVersion)
+}
+
+func releaseLock(conn *sql.DB) {
+	unlock, err := conn.Query("SELECT release_lock(?)", dbLockName)
+	if err != nil {
+		log.WithError(err).Error(ErrDbReleaseLockFailure)
+	}
+
+	defer unlock.Close()
+	unlock.Next()
+	var unlocked int
+	unlock.Scan(&unlocked)
+	unlock.Close()
+	if unlocked != 1 {
+		log.Error(ErrDbReleaseLockFailure)
+	}
 }
 
 func exec(sqlStatements string) func(*sql.Tx) error {

@@ -6,8 +6,10 @@ jobs:
       - image: golang:1.8.4
         environment:
           GOPATH: /go
+          CIRCLE_TEST_REPORTS: /tmp/test-results
+          CIRCLE_COVERAGE_REPORT: /tmp/coverage-results
           DB_TEST_URL: root:password@/pac
-      - image: mysql:5.7
+      - image: mysql:5.6
         environment:
           MYSQL_ROOT_PASSWORD: password
           MYSQL_DATABASE: pac
@@ -22,8 +24,8 @@ jobs:
       - run:
           name: Test Results
           command: |
-            mkdir -p /tmp/test-results
-            mkdir -p /tmp/coverage-results
+            mkdir -p ${CIRCLE_TEST_REPORTS}
+            mkdir -p ${CIRCLE_COVERAGE_REPORT}
       - run:
           name: Govendor Sync
           command: govendor sync -v
@@ -33,20 +35,11 @@ jobs:
       - run:
           name: Run Tests
           command: |
-            go test -v -cover -race -coverprofile=/tmp/coverage-results/coverage.out .
-            go list ./... | grep -v vendor | awk -F/ '{print $4}' | xargs -I {} go test -v -cover -race -coverprofile=/tmp/coverage-results/coverage_{}.out ./{}
-            mkdir -p /tmp/test-results/
-            go test -v -race . | /go/bin/go-junit-report > /tmp/test-results/main.xml
-            go list ./... | grep -v vendor | awk -F/ '{print $4}' | xargs -I {} go test -v -race ./{} | /go/bin/go-junit-report > /tmp/test-results/{}.xml
-      - run:
-          name: Combine Coverage Results
-          command: |
-            sed -i '1d' /tmp/coverage-results/*.out
-            echo "mode: atomic" > /tmp/coverage-results/overall-coverage.result
-            cat /tmp/coverage-results/*.out >> /tmp/coverage-results/overall-coverage.result
+            govendor test -race -v +local | /go/bin/go-junit-report > ${CIRCLE_TEST_REPORTS}/main.xml
+            goverage -covermode=atomic -race -coverprofile=${CIRCLE_COVERAGE_REPORT}/coverage.out ./...
       - run:
           name: Upload Coverage
-          command: /go/bin/goveralls -coverprofile=/tmp/coverage-results/overall-coverage.result -service=circle-ci -repotoken=$COVERALLS_TOKEN
+          command: /go/bin/goveralls -coverprofile=${CIRCLE_COVERAGE_REPORT}/coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
       - store_test_results:
           path: /tmp/test-results
   dockerfile:

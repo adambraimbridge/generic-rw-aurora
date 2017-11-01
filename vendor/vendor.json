@@ -3,10 +3,6 @@
 	"ignore": "test",
 	"package": [
 		{
-			"path": "appengine/cloudsql",
-			"revision": ""
-		},
-		{
 			"checksumSHA1": "j5S14H11QxjtKCF+tzzUk6D0R2U=",
 			"path": "github.com/Financial-Times/api-endpoint",
 			"revision": "d9f326a291cc08362746471b16b3533472b1d4da",
@@ -105,7 +101,7 @@
 			"revisionTime": "2016-08-03T19:07:31Z"
 		},
 		{
-			"checksumSHA1": "3qaVoAYgzne6Eg2sUA1HnCpuDa4=",
+			"checksumSHA1": "XHvtJYHNGrH7PHbv/qaTDUJw9Fk=",
 			"path": "github.com/khatton-ft/goose",
 			"revision": "08a602e0dbc6616006cb3408dca15d0bd7cb08c2",
 			"revisionTime": "2017-10-27T12:24:14Z"
@@ -115,10 +111,6 @@
 			"path": "github.com/pmezard/go-difflib/difflib",
 			"revision": "792786c7400a136282c1664665ae0a8db921c6c2",
 			"revisionTime": "2016-01-10T10:55:54Z"
-		},
-		{
-			"path": "github.com/pressly/goose",
-			"revision": ""
 		},
 		{
 			"checksumSHA1": "DIjooF5+DLH5JSOjqnBlfNh9dFU=",

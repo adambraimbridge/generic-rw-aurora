@@ -42,7 +42,7 @@ func (service *HealthService) GTG() gtg.Status {
 		return gtg.Status{GoodToGo: false, Message: "Not connected to database"}
 	}
 
-	return gtg.Status{GoodToGo: true, Message: "OK"} // even if UPP is unhealthy, we should still attempt to publish, and therefore remain ready
+	return gtg.Status{GoodToGo: true, Message: "OK"}
 }
 
 func (service *HealthService) dbPingCheck() fthealth.Check {
@@ -50,7 +50,7 @@ func (service *HealthService) dbPingCheck() fthealth.Check {
 		ID:               "check-db-connection",
 		BusinessImpact:   "Editorial cannot make changes to annotations for content.",
 		Name:             "Check database connection",
-		PanicGuide:       "TBD",
+		PanicGuide:       "https://dewey.ft.com/generic-rw-aurora.html",
 		Severity:         1,
 		TechnicalSummary: "Application is not connected to the database.",
 		Checker:          service.db.Ping,
@@ -62,7 +62,7 @@ func (service *HealthService) dbSchemaCheck() fthealth.Check {
 		ID:               "check-db-schema",
 		BusinessImpact:   "Editorial may not be able to make changes to annotations for content.",
 		Name:             "Check database schema version",
-		PanicGuide:       "TBD",
+		PanicGuide:       "https://dewey.ft.com/generic-rw-aurora.html",
 		Severity:         1,
 		TechnicalSummary: "The database schema is not the version expected by the application.",
 		Checker:          service.db.SchemaCheck,
