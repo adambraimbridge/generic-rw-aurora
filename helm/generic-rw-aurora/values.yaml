@@ -1,0 +1,10 @@
+# Default values for generic-rw-aurora.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+service:
+  name: "" # The name of the service, should be defined in the specific app-configs folder
+  hasHealthcheck: "true"
+replicaCount: 2
+image:
+  repository: coco/generic-rw-aurora
+  pullPolicy: Always
