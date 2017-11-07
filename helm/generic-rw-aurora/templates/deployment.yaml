@@ -1,5 +1,3 @@
-##this is an example deployment.yaml that should be customized in order to meet the configuration for app k8s deployment
-
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
