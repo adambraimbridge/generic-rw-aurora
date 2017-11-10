@@ -21,6 +21,7 @@ RUN apk --update add git go libc-dev ca-certificates \
   && $GOPATH/bin/govendor sync \
   && go build -ldflags="${LDFLAGS}" \
   && mv generic-rw-aurora /generic-rw-aurora-app \
+  && mv config.yml /config.yml \
   && apk del go git libc-dev \
   && rm -rf $GOPATH /var/cache/apk/* /generic-rw-aurora
 
