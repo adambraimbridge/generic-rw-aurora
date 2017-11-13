@@ -112,30 +112,58 @@ func (service *AuroraRWService) Write(tableName string, key string, doc string, 
 	wlog := log.WithFields(log.Fields{"table": tableName, "key": key})
 	table := service.rwConfig[tableName]
 
-	cols := ""
-	values := []interface{}{}
-	upserts := make(map[string]interface{})
+	values := service.generateColumnValues(table, key, doc, params, metadata)
 
+	// generate a list of columns and bind values for the INSERT clause
+	insertCols := ""
+	bindings := []interface{}{}
+	for col, val := range values {
+		insertCols += "," + col
+		bindings = append(bindings, val)
+	}
+
+	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, insertCols[1:], strings.Repeat(",?", len(values))[1:])
+	upsert := insert + " ON DUPLICATE KEY UPDATE "
+	// generate a list of columns and bind values for the UPSERT clause
+	for col, val := range values {
+		if col != table.primaryKey {
+			upsert += fmt.Sprintf(" %s = ?,", col)
+			bindings = append(bindings, val)
+		}
+	}
+	upsert = upsert[:len(upsert) - 1]
+
+	var created bool
+	res, err := service.conn.Exec(upsert, bindings...)
+	if err != nil {
+		wlog.WithError(err).Error("unable to write to database")
+	} else {
+		i, _ := res.RowsAffected()
+		created = i == 1
+	}
+	return created, err
+}
+
+func (service *AuroraRWService) generateColumnValues(table table, key string, doc string, params map[string]string, metadata map[string]string) map[string]interface{} {
+	wlog := log.WithFields(log.Fields{"table": table.name, "key": key})
+
+	values := make(map[string]interface{})
 	var jsondoc interface{}
 
 	for col, expr := range table.columns {
-		if len(cols) > 0 {
-			cols += ", "
-		}
-
-		cols += col
 		var val interface{}
 		if strings.HasPrefix(expr, ":") {
-			// : - in the request params
+			// : - in the request params, e.g. :id
 			val = params[expr[1:]]
 		} else if strings.HasPrefix(expr, "@.") {
-			// @. - in the metadata
+			// @. - in the metadata, e.g. @.timestamp
 			val = metadata[expr[2:]]
 		} else if expr == "$" {
 			// $ - the whole document
 			val = doc
 		} else if strings.HasPrefix(expr, "$") {
-			// $. - a JSONpath in the document
+			// $. - a JSONpath in the document, e.g. $.post.body
+			// only unmarshal into a JSON document if necessary, and only once
 			if jsondoc == nil {
 				json.Unmarshal([]byte(doc), &jsondoc)
 			}
@@ -145,30 +173,11 @@ func (service *AuroraRWService) Write(tableName string, key string, doc string, 
 				wlog.WithFields(log.Fields{"column": col, "expr": expr}).Warn("unable to extract JSONPath value from document")
 			}
 		} else {
-			// literal
+			// a literal value
 			val = expr
 		}
-		values = append(values, val)
-		if col != table.primaryKey {
-			upserts[col] = val
-		}
+		values[col] = val
 	}
 
-	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, cols, strings.Repeat(",?", len(values))[1:])
-	upsert := insert + " ON DUPLICATE KEY UPDATE "
-	for col, val := range upserts {
-		upsert += fmt.Sprintf(" %s = ?,", col)
-		values = append(values, val)
-	}
-	upsert = upsert[:len(upsert) - 1]
-
-	var created bool
-	res, err := service.conn.Exec(upsert, values...)
-	if err != nil {
-		wlog.WithError(err).Error("unable to write to database")
-	} else {
-		i, _ := res.RowsAffected()
-		created = i == 1
-	}
-	return created, err
+	return values
 }
