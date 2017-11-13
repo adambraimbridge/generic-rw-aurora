@@ -74,6 +74,7 @@ func main() {
 		EnvVar: "API_YML",
 	})
 
+	log.SetFormatter(&log.JSONFormatter{})
 	log.SetLevel(log.InfoLevel)
 	log.Infof("[Startup] %v is starting", *appSystemCode)
 
