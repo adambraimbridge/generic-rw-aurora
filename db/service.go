@@ -109,6 +109,7 @@ func (service *AuroraRWService) Read(tableName string, key string) (string, erro
 }
 
 func (service *AuroraRWService) Write(tableName string, key string, doc string, params map[string]string, metadata map[string]string) (bool,error) {
+	wlog := log.WithFields(log.Fields{"table": tableName, "key": key})
 	table := service.rwConfig[tableName]
 
 	cols := ""
@@ -141,7 +142,7 @@ func (service *AuroraRWService) Write(tableName string, key string, doc string, 
 			var err error
 			val, err = jsonpath.JsonPathLookup(jsondoc, expr)
 			if err != nil {
-				log.WithField("expr", expr).Warn("unable to extract JSONPath value from document")
+				wlog.WithFields(log.Fields{"column": col, "expr": expr}).Warn("unable to extract JSONPath value from document")
 			}
 		} else {
 			// literal
@@ -164,7 +165,7 @@ func (service *AuroraRWService) Write(tableName string, key string, doc string, 
 	var created bool
 	res, err := service.conn.Exec(upsert, values...)
 	if err != nil {
-		log.Infof("error: %v", err)
+		wlog.WithError(err).Error("unable to write to database")
 	} else {
 		i, _ := res.RowsAffected()
 		created = i == 1
