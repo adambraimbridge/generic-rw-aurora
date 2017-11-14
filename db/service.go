@@ -7,6 +7,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	testSql = "SELECT COUNT(*) FROM goose_db_version"
+)
+
 type AuroraRWService interface {
 	Ping() (string, error)
 	SchemaCheck() (string, error)
@@ -30,7 +34,8 @@ func NewService(conn *sql.DB, migrate bool) AuroraRWService {
 }
 
 func (service *auroraRW) Ping() (string, error) {
-	if err := service.conn.Ping(); err != nil {
+	var result interface{}
+	if err := service.conn.QueryRow(testSql).Scan(&result); err != nil {
 		return fmt.Sprintf("Ping Not OK: %s", err.Error()), err
 	}
 
