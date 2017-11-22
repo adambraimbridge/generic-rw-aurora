@@ -7,22 +7,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
-type mockAuroraRW struct {
+type mockRWMonitor struct {
 	mock.Mock
 }
 
-func (m *mockAuroraRW) Ping() (string, error) {
+func (m *mockRWMonitor) Ping() (string, error) {
 	args := m.Called()
 	return args.String(0), args.Error(1)
 }
 
-func (m *mockAuroraRW) SchemaCheck() (string, error) {
+func (m *mockRWMonitor) SchemaCheck() (string, error) {
 	args := m.Called()
 	return args.String(0), args.Error(1)
 }
 
 func TestGTG_OK(t *testing.T) {
-	rw := &mockAuroraRW{}
+	rw := &mockRWMonitor{}
 	rw.On("Ping").Return("OK", nil)
 	h := NewHealthService("test-systemCode", "test-appName", "test-appDescription", rw)
 
@@ -34,7 +34,7 @@ func TestGTG_OK(t *testing.T) {
 }
 
 func TestGTG_NotConnected(t *testing.T) {
-	rw := &mockAuroraRW{}
+	rw := &mockRWMonitor{}
 	err := errors.New("test error")
 	rw.On("Ping").Return("Not OK", err)
 	h := NewHealthService("test-systemCode", "test-appName", "test-appDescription", rw)
@@ -47,7 +47,7 @@ func TestGTG_NotConnected(t *testing.T) {
 }
 
 func TestHealth_OK(t *testing.T) {
-	rw := &mockAuroraRW{}
+	rw := &mockRWMonitor{}
 	rw.On("Ping").Return("OK", nil)
 	rw.On("SchemaCheck").Return("OK", nil)
 	h := NewHealthService("test-systemCode", "test-appName", "test-appDescription", rw)
@@ -61,7 +61,7 @@ func TestHealth_OK(t *testing.T) {
 }
 
 func TestHealth_NotConnected(t *testing.T) {
-	rw := &mockAuroraRW{}
+	rw := &mockRWMonitor{}
 	err := errors.New("not connected")
 	rw.On("Ping").Return("Not OK", err)
 	rw.On("SchemaCheck").Return("Not OK", err)
@@ -76,7 +76,7 @@ func TestHealth_NotConnected(t *testing.T) {
 }
 
 func TestHealth_SchemaMismatch(t *testing.T) {
-	rw := &mockAuroraRW{}
+	rw := &mockRWMonitor{}
 	rw.On("Ping").Return("OK", nil)
 	err := errors.New("schema mismatch")
 	rw.On("SchemaCheck").Return("Not OK", err)
