@@ -1,0 +1,17 @@
+paths:
+  "/drafts/content/:id/annotations":
+    table: draft_annotations
+    columns:
+      uuid: ":id"
+      last_modified: "@.timestamp"
+      publish_ref: "@.publishRef"
+      body: "$"
+    primaryKey: uuid
+  "/published/content/:id/annotations":
+    table: published_annotations
+    columns:
+      uuid: ":id"
+      last_modified: "@.timestamp"
+      publish_ref: "@.publishRef"
+      body: "$"
+    primaryKey: uuid

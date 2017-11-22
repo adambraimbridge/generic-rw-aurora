@@ -11,10 +11,10 @@ import (
 
 type HealthService struct {
 	fthealth.HealthCheck
-	db db.AuroraRWService
+	db db.RWMonitor
 }
 
-func NewHealthService(appSystemCode string, appName string, appDescription string, rw db.AuroraRWService) *HealthService {
+func NewHealthService(appSystemCode string, appName string, appDescription string, rw db.RWMonitor) *HealthService {
 	h := &HealthService{
 		fthealth.HealthCheck{
 			appSystemCode,
