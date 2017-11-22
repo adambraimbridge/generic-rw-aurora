@@ -19,9 +19,10 @@ const (
 func Read(service db.RWService, table string) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		id := vestigo.Param(request, "id")
-		doc, err := service.Read(table, id)
+		doc, hash, err := service.Read(table, id)
 		writer.Header().Set("Content-Type", "application/json")
 		if err == nil {
+			writer.Header().Set("X-Hash-Header", hash)
 			writer.Write([]byte(doc))
 		} else {
 			body := map[string]string{}
@@ -59,7 +60,8 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 			return
 		}
 
-		created, err := service.Write(table, id, string(doc), params, metadata)
+		hash := request.Header.Get("X-Hash-Header")
+		created, err := service.Write(table, id, string(doc), hash, params, metadata)
 		if err == nil {
 			if created {
 				writer.WriteHeader(http.StatusCreated)

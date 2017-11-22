@@ -17,8 +17,8 @@ type RWMonitor interface {
 }
 
 type RWService interface {
-	Read(table string, key string) (string, error)
-	Write(table string, key string, doc string, params map[string]string, metadata map[string]string) (bool,error)
+	Read(table string, key string) (string, string, error)
+	Write(table string, key string, doc string, hash string, params map[string]string, metadata map[string]string) (bool,error)
 }
 
 type table struct {
@@ -76,65 +76,74 @@ func (service *AuroraRWService) SchemaCheck() (string, error) {
 	return "Database schema is mismatched to this service", service.schemaMismatch
 }
 
-func (service *AuroraRWService) Read(tableName string, key string) (string, error) {
+func (service *AuroraRWService) Read(tableName string, key string) (string, string, error) {
 	log.WithField("table", tableName).WithField("key", key).Info("Read")
 	table := service.rwConfig[tableName]
 	var docColumn string
+	var hashColumn string
 	for col, expr := range table.columns {
 		if expr == "$" {
 			docColumn = col
-			break
+		}
+		if expr == "@.hash" {
+			hashColumn = col
 		}
 	}
-	if docColumn == "" {
-		log.WithField("table", tableName).Error("no document column is configured")
-		return "", fmt.Errorf("no document column is configured for table %s", tableName)
+
+	if docColumn == "" || hashColumn == "" {
+		log.WithField("table", tableName).Error("document or hash column is not configured")
+		return "", "", fmt.Errorf("document or hash column is not configured for table %s", tableName)
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", docColumn, table.name, table.primaryKey)
+	query := fmt.Sprintf("SELECT %s, %s FROM %s WHERE %s = ?", docColumn, hashColumn, table.name, table.primaryKey)
 
 	row := service.conn.QueryRow(query, key)
 
 	var doc string
-	err := row.Scan(&doc)
+	var hash string
+	err := row.Scan(&doc, &hash)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
 			log.WithError(err).Error("unable to read from database")
 		}
-		return "", err
+		return "", "", err
 	}
 
-	return doc, nil
+	return doc, hash, nil
 }
 
-func (service *AuroraRWService) Write(tableName string, key string, doc string, params map[string]string, metadata map[string]string) (bool,error) {
+func (service *AuroraRWService) Write(tableName string, key string, doc string, hash string, params map[string]string, metadata map[string]string) (bool,error) {
 	wlog := log.WithFields(log.Fields{"table": tableName, "key": key})
 	table := service.rwConfig[tableName]
 
-	values := service.generateColumnValues(table, key, doc, params, metadata)
-
-	// generate a list of columns and bind values for the INSERT clause
-	insertCols := ""
+	values := service.generateColumnValues(table, key, doc, hash, params, metadata)
+	query := ""
 	bindings := []interface{}{}
-	for col, val := range values {
-		insertCols += "," + col
-		bindings = append(bindings, val)
-	}
 
-	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, insertCols[1:], strings.Repeat(",?", len(values))[1:])
-	upsert := insert + " ON DUPLICATE KEY UPDATE "
-	// generate a list of columns and bind values for the UPSERT clause
-	for col, val := range values {
-		if col != table.primaryKey {
-			upsert += fmt.Sprintf(" %s = ?,", col)
+	if hash == "" {
+		insertCols := ""
+		for col, val := range values {
+			insertCols += "," + col
 			bindings = append(bindings, val)
 		}
+
+		query = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, insertCols[1:], strings.Repeat(",?", len(values))[1:])
+	} else {
+		setValues := ""
+		for col, val := range values {
+			if col != table.primaryKey {
+				setValues += fmt.Sprintf(" %s = ?,", col)
+				bindings = append(bindings, val)
+			}
+		}
+		setValues = setValues[:len(setValues) - 1]
+
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s' AND %s = '%s'", tableName, setValues, "hash", hash, "uuid", key)
 	}
-	upsert = upsert[:len(upsert) - 1]
 
 	var created bool
-	res, err := service.conn.Exec(upsert, bindings...)
+	res, err := service.conn.Exec(query, bindings...)
 	if err != nil {
 		wlog.WithError(err).Error("unable to write to database")
 	} else {
@@ -144,7 +153,7 @@ func (service *AuroraRWService) Write(tableName string, key string, doc string, 
 	return created, err
 }
 
-func (service *AuroraRWService) generateColumnValues(table table, key string, doc string, params map[string]string, metadata map[string]string) map[string]interface{} {
+func (service *AuroraRWService) generateColumnValues(table table, key string, doc string, hash string, params map[string]string, metadata map[string]string) map[string]interface{} {
 	wlog := log.WithFields(log.Fields{"table": table.name, "key": key})
 
 	values := make(map[string]interface{})
@@ -155,6 +164,9 @@ func (service *AuroraRWService) generateColumnValues(table table, key string, do
 		if strings.HasPrefix(expr, ":") {
 			// : - in the request params, e.g. :id
 			val = params[expr[1:]]
+		} else if expr == "@.hash" {
+			// @.hash - hash header
+			val = hash
 		} else if strings.HasPrefix(expr, "@.") {
 			// @. - in the metadata, e.g. @.timestamp
 			val = metadata[expr[2:]]
