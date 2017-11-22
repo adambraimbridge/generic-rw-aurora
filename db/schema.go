@@ -74,7 +74,7 @@ func (m *migration) filename() string {
 	return fmt.Sprintf("%05d_%s.go", m.cardinal, m.name)
 }
 
-func (service *auroraRW) migrate(apply bool) error {
+func (service *AuroraRWService) migrate(apply bool) error {
 	currentVersion, err := goose.GetDBVersion(service.conn)
 	if err != nil {
 		log.WithError(err).Error("unable to discover DB version")
