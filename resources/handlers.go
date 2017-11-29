@@ -14,16 +14,19 @@ import (
 
 const (
 	errNotFound = "No document found."
+
+	documentHashHeader         = "Document-Hash"
+	previousDocumentHashHeader = "Previous-Document-Hash"
 )
 
 func Read(service db.RWService, table string) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		id := vestigo.Param(request, "id")
-		doc, hash, err := service.Read(table, id)
+		doc, err := service.Read(table, id)
 		writer.Header().Set("Content-Type", "application/json")
 		if err == nil {
-			writer.Header().Set("X-Hash-Header", hash)
-			writer.Write([]byte(doc))
+			writer.Header().Set(documentHashHeader, doc.Hash())
+			writer.Write(doc.Body)
 		} else {
 			body := map[string]string{}
 			if err == sql.ErrNoRows {
@@ -40,9 +43,6 @@ func Read(service db.RWService, table string) http.HandlerFunc {
 
 func Write(service db.RWService, table string) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
-		metadata := make(map[string]string)
-		metadata["timestamp"] = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-		metadata["publishRef"] = tidutils.GetTransactionIDFromRequest(request)
 
 		params := make(map[string]string)
 		for _, p := range vestigo.ParamNames(request) {
@@ -52,7 +52,7 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 
 		writer.Header().Set("Content-Type", "application/json")
 
-		doc, err := ioutil.ReadAll(request.Body)
+		docBody, err := ioutil.ReadAll(request.Body)
 		if err != nil {
 			writer.WriteHeader(http.StatusInternalServerError)
 			body := map[string]string{"message": err.Error()}
@@ -60,9 +60,16 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 			return
 		}
 
-		hash := request.Header.Get("X-Hash-Header")
-		created, err := service.Write(table, id, string(doc), hash, params, metadata)
+		doc := db.NewDocument(docBody)
+		doc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+		doc.Metadata.Set("publishRef", tidutils.GetTransactionIDFromRequest(request))
+
+		previousDocHash := request.Header.Get(previousDocumentHashHeader)
+
+		created, hash, err := service.Write(table, id, doc, params, previousDocHash)
+
 		if err == nil {
+			writer.Header().Set(documentHashHeader, hash)
 			if created {
 				writer.WriteHeader(http.StatusCreated)
 			} else {
