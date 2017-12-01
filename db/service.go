@@ -149,10 +149,10 @@ func (service *AuroraRWService) Write(tableName string, key string, doc Document
 
 func (service *AuroraRWService) insertDocumentWithConflictDetection(t table, key string, doc Document, params map[string]string) (bool, error) {
 	writeLog := log.WithFields(log.Fields{"table": t.name, "key": key})
-	columns, bindings := buildInsertComponents(t, key, doc, params)
-	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, strings.Repeat(",?", len(bindings))[1:])
+	columns, values, bindings := buildInsertComponents(t, key, doc, params)
+	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
 
-	err := service.executeStatement(insert, bindings)
+	_, err := service.executeStatement(insert, bindings)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Error 1062:") {
 			writeLog.WithError(err).Error(conflictLogMessage)
@@ -169,97 +169,60 @@ func (service *AuroraRWService) updateDocumentWithConflictDetection(t table, key
 	setValues, setBindings := buildUpdateSetComponents(t, key, doc, params)
 	bindings := append(setBindings, key, previousDocHash)
 	updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s = ? AND %s = ?", t.name, setValues, t.primaryKey, hashColumn)
-	err := service.executeStatement(updateStmt, bindings)
+	affectedRows, err := service.executeStatement(updateStmt, bindings)
 	if err != nil {
-		if err == errDataNotAffectedByOperation {
-			writeLog.WithError(err).Error(conflictLogMessage)
-			return service.insertDocumentOnDuplicateKeyUpdate(t, key, doc, params)
-		}
 		writeLog.WithError(err).Error("unable to write to database")
+	}
+	if affectedRows == 0 {
+		writeLog.WithError(errDataNotAffectedByOperation).Error(conflictLogMessage)
+		return service.insertDocumentOnDuplicateKeyUpdate(t, key, doc, params)
 	}
 	return updated, err
 }
 
 func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(t table, key string, doc Document, params map[string]string) (bool, error) {
-	//writeLog := log.WithFields(log.Fields{"table": t.name, "key": key})
-	//columns, bindings := buildInsertComponents(t, key, doc, params)
-	return false, nil
+	writeLog := log.WithFields(log.Fields{"table": t.name, "key": key})
+	columns, values, insertBindings := buildInsertComponents(t, key, doc, params)
+	setValues, setBindings := buildUpdateSetComponents(t, key, doc, params)
+	bindings := append(insertBindings, setBindings...)
+
+	insertStmt := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
+	insertStmt += " ON DUPLICATE KEY UPDATE " + setValues
+	affectedRows, err := service.executeStatement(insertStmt, bindings)
+	if err != nil {
+		writeLog.WithError(err).Error("Error in writing ")
+	}
+	if affectedRows == 1 {
+		return created, err
+	}
+	return updated, err
 }
 
-//insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, insertCols[1:], strings.Repeat(",?", len(values))[1:])
-//upsert := insert + " ON DUPLICATE KEY UPDATE "
-//// generate a list of columns and bind values for the UPSERT clause
-//for col, val := range values {
-//	if col != table.primaryKey {
-//		upsert += fmt.Sprintf(" %s = ?,", col)
-//		bindings = append(bindings, val)
-//	}
-//}
-//upsert = upsert[:len(upsert) - 1]
-
-//func (service *AuroraRWService) Write(tableName string, key string, doc string, previousDocHash string, params map[string]string, metadata map[string]string) (bool,error) {
-//	wlog := log.WithFields(log.Fields{"table": tableName, "key": key})
-//	table := service.rwConfig[tableName]
-//
-//	values := service.generateColumnValues(table, key, doc, hash, params, metadata)
-//	query := ""
-//	bindings := []interface{}{}
-//
-//	if hash == "" {
-//		insertCols := ""
-//		for col, val := range values {
-//			insertCols += "," + col
-//			bindings = append(bindings, val)
-//		}
-//
-//		query = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, insertCols[1:], strings.Repeat(",?", len(values))[1:])
-//	} else {
-//		setValues := ""
-//		for col, val := range values {
-//			if col != table.primaryKey {
-//				setValues += fmt.Sprintf(" %s = ?,", col)
-//				bindings = append(bindings, val)
-//			}
-//		}
-//		setValues = setValues[:len(setValues) - 1]
-//
-//		query = fmt.Sprintf("UPDATE %s SET %s WHERE %s = '%s' AND %s = '%s'", tableName, setValues, "hash", hash, "uuid", key)
-//	}
-//
-//	var created bool
-//	res, err := service.conn.Exec(query, bindings...)
-//	if err != nil {
-//		wlog.WithError(err).Error("unable to write to database")
-//	} else {
-//		i, _ := res.RowsAffected()
-//		created = i == 1
-//	}
-//	return created, err
-//}
-
-func buildInsertComponents(t table, key string, doc Document, params map[string]string) (string, []interface{}) {
-	values := generateColumnValues(t, key, doc, params)
+func buildInsertComponents(t table, key string, doc Document, params map[string]string) (string, string, []interface{}) {
+	valuesMap := generateColumnValuesMap(t, key, doc, params)
 	insertCols := ""
+	valuesStmt := ""
 	var bindings []interface{}
-	for col, val := range values {
+	for col, val := range valuesMap {
 		insertCols += "," + col
+		valuesStmt += ",?"
 		bindings = append(bindings, val)
 	}
-	return insertCols[1:], bindings
+	return insertCols[1:], valuesStmt[1:], bindings
 }
 
 func buildUpdateSetComponents(t table, key string, doc Document, params map[string]string) (string, []interface{}) {
-	values := generateColumnValues(t, key, doc, params)
+	valuesMap := generateColumnValuesMap(t, key, doc, params)
 	setValues := ""
 	var bindings []interface{}
-	for col, val := range values {
+	for col, val := range valuesMap {
 		setValues += "," + col + "=?"
 		bindings = append(bindings, val)
 	}
 	return setValues[1:], bindings
 }
 
-func generateColumnValues(table table, key string, doc Document, params map[string]string) map[string]interface{} {
+func generateColumnValuesMap(table table, key string, doc Document, params map[string]string) map[string]interface{} {
 	writeLog := log.WithFields(log.Fields{"table": table.name, "key": key})
 
 	values := make(map[string]interface{})
@@ -299,16 +262,11 @@ func generateColumnValues(table table, key string, doc Document, params map[stri
 	return values
 }
 
-func (service *AuroraRWService) executeStatement(stmt string, bindings []interface{}) error {
-	fmt.Println(stmt)
-	fmt.Println(bindings)
+func (service *AuroraRWService) executeStatement(stmt string, bindings []interface{}) (int64, error) {
 	res, err := service.conn.Exec(stmt, bindings...)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	n, _ := res.RowsAffected()
-	if n == 1 {
-		return errDataNotAffectedByOperation
-	}
-	return nil
+	return n, nil
 }
