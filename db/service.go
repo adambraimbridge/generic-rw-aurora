@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Financial-Times/generic-rw-aurora/config"
+	tid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/oliveagle/jsonpath"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,6 +20,8 @@ const conflictLogMessage = "conflict detected in writing document"
 const created = true
 const updated = false
 
+const contextLog = "contextLog"
+
 var errDataNotAffectedByOperation = errors.New("data is not affected by the operation")
 
 type RWMonitor interface {
@@ -26,8 +30,8 @@ type RWMonitor interface {
 }
 
 type RWService interface {
-	Read(table string, key string) (Document, error)
-	Write(table string, key string, doc Document, params map[string]string, previousDocumentHash string) (bool, string, error)
+	Read(ctx context.Context, table string, key string) (Document, error)
+	Write(ctx context.Context, table string, key string, doc Document, params map[string]string, previousDocumentHash string) (bool, string, error)
 }
 
 type table struct {
@@ -91,8 +95,13 @@ func (service *AuroraRWService) SchemaCheck() (string, error) {
 	return "Database schema is mismatched to this service", service.schemaMismatch
 }
 
-func (service *AuroraRWService) Read(tableName string, key string) (Document, error) {
-	log.WithField("table", tableName).WithField("key", key).Info("Read")
+func (service *AuroraRWService) Read(ctx context.Context, tableName string, key string) (Document, error) {
+	txid, _ := tid.GetTransactionIDFromContext(ctx)
+	readLog := log.WithField("table", tableName).
+		WithField("key", key).
+		WithField(tid.TransactionIDKey, txid)
+
+	readLog.Info("Read")
 	table := service.rwConfig[tableName]
 	var docColumn string
 
@@ -104,7 +113,7 @@ func (service *AuroraRWService) Read(tableName string, key string) (Document, er
 	}
 
 	if docColumn == "" {
-		log.WithField("table", tableName).Error("document column is not configured")
+		readLog.Error("document column is not configured")
 		return Document{}, fmt.Errorf("document column is not configured for table %s", tableName)
 	}
 
@@ -118,7 +127,7 @@ func (service *AuroraRWService) Read(tableName string, key string) (Document, er
 
 	if err != nil {
 		if err != sql.ErrNoRows {
-			log.WithError(err).Error("unable to read from database")
+			readLog.Error("unable to read from database")
 		}
 		return Document{}, err
 	}
@@ -130,43 +139,46 @@ func (service *AuroraRWService) Read(tableName string, key string) (Document, er
 	return doc, nil
 }
 
-func (service *AuroraRWService) Write(tableName string, key string, doc Document, params map[string]string, previousDocHash string) (bool, string, error) {
+func (service *AuroraRWService) Write(ctx context.Context, tableName string, key string, doc Document, params map[string]string, previousDocHash string) (bool, string, error) {
+	txid, _ := tid.GetTransactionIDFromContext(ctx)
+	writeLog := log.WithFields(log.Fields{"table": tableName, "key": key, tid.TransactionIDKey: txid})
+	ctx = context.WithValue(ctx, contextLog, writeLog)
 	table := service.rwConfig[tableName]
 	doc.hash = hash(doc.Body)
 	var status bool
 	var err error
 	if table.hasConflictDetection {
 		if previousDocHash == "" {
-			status, err = service.insertDocumentWithConflictDetection(table, key, doc, params)
+			status, err = service.insertDocumentWithConflictDetection(ctx, table, key, doc, params)
 		} else {
-			status, err = service.updateDocumentWithConflictDetection(table, key, doc, params, previousDocHash)
+			status, err = service.updateDocumentWithConflictDetection(ctx, table, key, doc, params, previousDocHash)
 		}
 	} else {
-		status, err = service.insertDocumentOnDuplicateKeyUpdate(table, key, doc, params)
+		status, err = service.insertDocumentOnDuplicateKeyUpdate(ctx, table, key, doc, params)
 	}
 	return status, doc.hash, err
 }
 
-func (service *AuroraRWService) insertDocumentWithConflictDetection(t table, key string, doc Document, params map[string]string) (bool, error) {
-	writeLog := log.WithFields(log.Fields{"table": t.name, "key": key})
-	columns, values, bindings := buildInsertComponents(t, key, doc, params)
+func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
+	writeLog := ctx.Value(contextLog).(*log.Entry)
+	columns, values, bindings := buildInsertComponents(ctx, t, key, doc, params)
 	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
 
 	_, err := service.executeStatement(insert, bindings)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Error 1062:") {
 			writeLog.WithError(err).Error(conflictLogMessage)
-			return service.insertDocumentOnDuplicateKeyUpdate(t, key, doc, params)
+			return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
 		}
 		writeLog.WithError(err).Error("unable to write to database")
 	}
 	return created, err
 }
 
-func (service *AuroraRWService) updateDocumentWithConflictDetection(t table, key string, doc Document, params map[string]string, previousDocHash string) (bool, error) {
-	writeLog := log.WithFields(log.Fields{"table": t.name, "key": key})
+func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string, previousDocHash string) (bool, error) {
+	writeLog := ctx.Value(contextLog).(*log.Entry)
 
-	setValues, setBindings := buildUpdateSetComponents(t, key, doc, params)
+	setValues, setBindings := buildUpdateSetComponents(ctx, t, key, doc, params)
 	bindings := append(setBindings, key, previousDocHash)
 	updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s = ? AND %s = ?", t.name, setValues, t.primaryKey, hashColumn)
 	affectedRows, err := service.executeStatement(updateStmt, bindings)
@@ -175,15 +187,15 @@ func (service *AuroraRWService) updateDocumentWithConflictDetection(t table, key
 	}
 	if affectedRows == 0 {
 		writeLog.WithError(errDataNotAffectedByOperation).Error(conflictLogMessage)
-		return service.insertDocumentOnDuplicateKeyUpdate(t, key, doc, params)
+		return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
 	}
 	return updated, err
 }
 
-func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(t table, key string, doc Document, params map[string]string) (bool, error) {
-	writeLog := log.WithFields(log.Fields{"table": t.name, "key": key})
-	columns, values, insertBindings := buildInsertComponents(t, key, doc, params)
-	setValues, setBindings := buildUpdateSetComponents(t, key, doc, params)
+func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
+	writeLog := ctx.Value(contextLog).(*log.Entry)
+	columns, values, insertBindings := buildInsertComponents(ctx, t, key, doc, params)
+	setValues, setBindings := buildUpdateSetComponents(ctx, t, key, doc, params)
 	bindings := append(insertBindings, setBindings...)
 
 	insertStmt := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
@@ -198,8 +210,8 @@ func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(t table, key 
 	return updated, err
 }
 
-func buildInsertComponents(t table, key string, doc Document, params map[string]string) (string, string, []interface{}) {
-	valuesMap := generateColumnValuesMap(t, key, doc, params)
+func buildInsertComponents(ctx context.Context, t table, key string, doc Document, params map[string]string) (string, string, []interface{}) {
+	valuesMap := generateColumnValuesMap(ctx, t, key, doc, params)
 	insertCols := ""
 	valuesStmt := ""
 	var bindings []interface{}
@@ -211,8 +223,8 @@ func buildInsertComponents(t table, key string, doc Document, params map[string]
 	return insertCols[1:], valuesStmt[1:], bindings
 }
 
-func buildUpdateSetComponents(t table, key string, doc Document, params map[string]string) (string, []interface{}) {
-	valuesMap := generateColumnValuesMap(t, key, doc, params)
+func buildUpdateSetComponents(ctx context.Context, t table, key string, doc Document, params map[string]string) (string, []interface{}) {
+	valuesMap := generateColumnValuesMap(ctx, t, key, doc, params)
 	setValues := ""
 	var bindings []interface{}
 	for col, val := range valuesMap {
@@ -222,8 +234,8 @@ func buildUpdateSetComponents(t table, key string, doc Document, params map[stri
 	return setValues[1:], bindings
 }
 
-func generateColumnValuesMap(table table, key string, doc Document, params map[string]string) map[string]interface{} {
-	writeLog := log.WithFields(log.Fields{"table": table.name, "key": key})
+func generateColumnValuesMap(ctx context.Context, table table, key string, doc Document, params map[string]string) map[string]interface{} {
+	writeLog := ctx.Value(contextLog).(*log.Entry)
 
 	values := make(map[string]interface{})
 	var jsondoc interface{}

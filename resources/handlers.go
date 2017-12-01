@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"context"
+
 	"github.com/Financial-Times/generic-rw-aurora/db"
 	tidutils "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/husobee/vestigo"
@@ -21,8 +23,10 @@ const (
 
 func Read(service db.RWService, table string) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
+		txid := tidutils.GetTransactionIDFromRequest(request)
+		ctx := tidutils.TransactionAwareContext(context.Background(), txid)
 		id := vestigo.Param(request, "id")
-		doc, err := service.Read(table, id)
+		doc, err := service.Read(ctx, table, id)
 		writer.Header().Set("Content-Type", "application/json")
 		if err == nil {
 			writer.Header().Set(documentHashHeader, doc.Hash())
@@ -43,7 +47,8 @@ func Read(service db.RWService, table string) http.HandlerFunc {
 
 func Write(service db.RWService, table string) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
-
+		txid := tidutils.GetTransactionIDFromRequest(request)
+		ctx := tidutils.TransactionAwareContext(context.Background(), txid)
 		params := make(map[string]string)
 		for _, p := range vestigo.ParamNames(request) {
 			params[p[1:]] = vestigo.Param(request, p[1:])
@@ -66,7 +71,7 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 
 		previousDocHash := request.Header.Get(previousDocumentHashHeader)
 
-		created, hash, err := service.Write(table, id, doc, params, previousDocHash)
+		created, hash, err := service.Write(ctx, table, id, doc, params, previousDocHash)
 
 		if err == nil {
 			writer.Header().Set(documentHashHeader, hash)
