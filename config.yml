@@ -6,7 +6,6 @@ paths:
       last_modified: "@.timestamp"
       publish_ref: "@.publishRef"
       body: "$"
-      hash: "@.hash"
     primaryKey: uuid
     hasConflictDetection: true
   "/published/content/:id/annotations":
@@ -16,6 +15,5 @@ paths:
       last_modified: "@.timestamp"
       publish_ref: "@.publishRef"
       body: "$"
-      hash: "@.hash"
     primaryKey: uuid
     hasConflictDetection: false
