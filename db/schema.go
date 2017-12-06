@@ -48,13 +48,13 @@ var (
 		`,
 		},
 		{2, "add-hash-annotations-tables",
-		`alter table draft_annotations add column hash varchar(56) not null;
+			`alter table draft_annotations add column hash varchar(56) not null;
 
-		alter table published_annotations add column hash varchar(56) not null;
+			alter table published_annotations add column hash varchar(56) not null;
 		`,
-		`alter table draft_annotations drop column hash;
+			`alter table draft_annotations drop column hash;
 
-		alter table published_annotations drop column hash;
+			alter table published_annotations drop column hash;
 		`,
 		},
 	}

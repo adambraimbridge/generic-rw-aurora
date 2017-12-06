@@ -15,6 +15,7 @@ govendor sync
 go build
 ```
 
+
 ## How to test
 
 Run with `-short` to skip database integration tests.
@@ -53,3 +54,4 @@ paths:
   "/published/content/:id/annotations":
     ...
 ```
+
