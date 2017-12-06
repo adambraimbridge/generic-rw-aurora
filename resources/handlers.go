@@ -29,7 +29,7 @@ func Read(service db.RWService, table string) http.HandlerFunc {
 		doc, err := service.Read(ctx, table, id)
 		writer.Header().Set("Content-Type", "application/json")
 		if err == nil {
-			writer.Header().Set(documentHashHeader, doc.Hash())
+			writer.Header().Set(documentHashHeader, doc.Hash)
 			writer.Write(doc.Body)
 		} else {
 			body := map[string]string{}
@@ -71,11 +71,11 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 
 		previousDocHash := request.Header.Get(previousDocumentHashHeader)
 
-		created, hash, err := service.Write(ctx, table, id, doc, params, previousDocHash)
+		status, hash, err := service.Write(ctx, table, id, doc, params, previousDocHash)
 
 		if err == nil {
 			writer.Header().Set(documentHashHeader, hash)
-			if created {
+			if status == db.Created {
 				writer.WriteHeader(http.StatusCreated)
 			} else {
 				writer.WriteHeader(http.StatusOK)

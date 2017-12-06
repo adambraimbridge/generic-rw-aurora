@@ -17,8 +17,8 @@ import (
 const hashColumn = "hash"
 const conflictLogMessage = "conflict detected in writing document"
 
-const created = true
-const updated = false
+const Created = true
+const Updated = false
 
 const contextLog = "contextLog"
 
@@ -134,7 +134,7 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 
 	doc := Document{
 		Body: []byte(docBody),
-		hash: docHash,
+		Hash: docHash,
 	}
 	return doc, nil
 }
@@ -144,7 +144,7 @@ func (service *AuroraRWService) Write(ctx context.Context, tableName string, key
 	writeLog := log.WithFields(log.Fields{"table": tableName, "key": key, tid.TransactionIDKey: txid})
 	ctx = context.WithValue(ctx, contextLog, writeLog)
 	table := service.rwConfig[tableName]
-	doc.hash = hash(doc.Body)
+	doc.Hash = hash(doc.Body)
 	var status bool
 	var err error
 	if table.hasConflictDetection {
@@ -156,7 +156,7 @@ func (service *AuroraRWService) Write(ctx context.Context, tableName string, key
 	} else {
 		status, err = service.insertDocumentOnDuplicateKeyUpdate(ctx, table, key, doc, params)
 	}
-	return status, doc.hash, err
+	return status, doc.Hash, err
 }
 
 func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
@@ -172,7 +172,7 @@ func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.
 		}
 		writeLog.WithError(err).Error("unable to write to database")
 	}
-	return created, err
+	return Created, err
 }
 
 func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string, previousDocHash string) (bool, error) {
@@ -189,7 +189,7 @@ func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.
 		writeLog.WithError(errDataNotAffectedByOperation).Error(conflictLogMessage)
 		return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
 	}
-	return updated, err
+	return Updated, err
 }
 
 func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
@@ -205,9 +205,9 @@ func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(ctx context.C
 		writeLog.WithError(err).Error("Error in writing ")
 	}
 	if affectedRows == 1 {
-		return created, err
+		return Created, err
 	}
-	return updated, err
+	return Updated, err
 }
 
 func buildInsertComponents(ctx context.Context, t table, key string, doc Document, params map[string]string) (string, string, []interface{}) {
@@ -269,7 +269,7 @@ func generateColumnValuesMap(ctx context.Context, table table, key string, doc D
 		values[col] = val
 	}
 
-	values[hashColumn] = doc.hash
+	values[hashColumn] = doc.Hash
 
 	return values
 }
