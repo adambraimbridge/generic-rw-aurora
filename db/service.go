@@ -10,6 +10,7 @@ import (
 
 	"github.com/Financial-Times/generic-rw-aurora/config"
 	tid "github.com/Financial-Times/transactionid-utils-go"
+	"github.com/go-sql-driver/mysql"
 	"github.com/oliveagle/jsonpath"
 	log "github.com/sirupsen/logrus"
 )
@@ -171,9 +172,11 @@ func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.
 
 	_, err := service.executeStatement(insert, bindings)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "Error 1062:") {
-			writeLog.WithError(err).Error(conflictLogMessage)
-			return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
+		if mysqlErr, ok := err.(*mysql.MySQLError); ok {
+			if mysqlErr.Number == 1062 {
+				writeLog.WithError(err).Error(conflictLogMessage)
+				return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
+			}
 		}
 		writeLog.WithError(err).Error("unable to write to database")
 	}

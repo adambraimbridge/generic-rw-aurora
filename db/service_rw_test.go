@@ -266,7 +266,7 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
 	assert.Equal(s.T(), testTID2, actualPublishRef, "publishRef")
 	assert.Equal(s.T(), docHash, actualHash, "document hash")
 
-	assert.Equal(s.T(), "conflict detected in writing document", hook.LastEntry().Message)
+	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
 	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
 	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
 	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
@@ -366,7 +366,7 @@ func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
 	assert.Equal(s.T(), testTID2, actualPublishRef, "publishRef")
 	assert.Equal(s.T(), docHash, actualHash, "document hash")
 
-	assert.Equal(s.T(), "conflict detected in writing document", hook.LastEntry().Message)
+	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
 	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
 	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
 	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
