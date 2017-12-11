@@ -19,7 +19,7 @@ const (
 )
 
 const hashColumn = "hash"
-const conflictLogMessage = "conflict detected in writing document"
+const conflictLogMessage = "conflict detected while updating document"
 
 const Created = true
 const Updated = false
