@@ -106,7 +106,7 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		WithField("key", key).
 		WithField(tid.TransactionIDKey, txid)
 
-	readLog.Info("Read")
+	readLog.Info("Reading document from database")
 	table := service.rwConfig[tableName]
 	var docColumn string
 
