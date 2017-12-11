@@ -132,7 +132,7 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 
 	if err != nil {
 		if err != sql.ErrNoRows {
-			readLog.Error("unable to read from database")
+			readLog.WithError(err).Error("unable to read from database")
 		}
 		return Document{}, err
 	}
