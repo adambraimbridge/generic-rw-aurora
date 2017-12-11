@@ -24,7 +24,8 @@ const conflictLogMessage = "conflict detected while updating document"
 const Created = true
 const Updated = false
 
-const contextLog = "contextLog"
+const contextDocumentKey = "contextDocumentKey"
+const contextTable = "contextTable"
 
 var errDataNotAffectedByOperation = errors.New("data is not affected by the operation")
 
@@ -145,9 +146,8 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 }
 
 func (service *AuroraRWService) Write(ctx context.Context, tableName string, key string, doc Document, params map[string]string, previousDocHash string) (bool, string, error) {
-	txid, _ := tid.GetTransactionIDFromContext(ctx)
-	writeLog := log.WithFields(log.Fields{"table": tableName, "key": key, tid.TransactionIDKey: txid})
-	ctx = context.WithValue(ctx, contextLog, writeLog)
+	ctx = context.WithValue(ctx, contextTable, tableName)
+	ctx = context.WithValue(ctx, contextDocumentKey, key)
 	table := service.rwConfig[tableName]
 	doc.Hash = hash(doc.Body)
 	var status bool
@@ -165,7 +165,7 @@ func (service *AuroraRWService) Write(ctx context.Context, tableName string, key
 }
 
 func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
-	writeLog := ctx.Value(contextLog).(*log.Entry)
+	writeLog := buildLogEntryFromContext(ctx)
 	columns, values, bindings := buildInsertComponents(ctx, t, key, doc, params)
 	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
 
@@ -181,7 +181,7 @@ func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.
 }
 
 func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string, previousDocHash string) (bool, error) {
-	writeLog := ctx.Value(contextLog).(*log.Entry)
+	writeLog := buildLogEntryFromContext(ctx)
 
 	setValues, setBindings := buildUpdateSetComponents(ctx, t, key, doc, params)
 	bindings := append(setBindings, key, previousDocHash)
@@ -198,7 +198,7 @@ func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.
 }
 
 func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
-	writeLog := ctx.Value(contextLog).(*log.Entry)
+	writeLog := buildLogEntryFromContext(ctx)
 	columns, values, insertBindings := buildInsertComponents(ctx, t, key, doc, params)
 	setValues, setBindings := buildUpdateSetComponents(ctx, t, key, doc, params)
 	bindings := append(insertBindings, setBindings...)
@@ -240,7 +240,7 @@ func buildUpdateSetComponents(ctx context.Context, t table, key string, doc Docu
 }
 
 func generateColumnValuesMap(ctx context.Context, table table, key string, doc Document, params map[string]string) map[string]interface{} {
-	writeLog := ctx.Value(contextLog).(*log.Entry)
+	writeLog := buildLogEntryFromContext(ctx)
 
 	values := make(map[string]interface{})
 	var jsondoc interface{}
@@ -286,4 +286,11 @@ func (service *AuroraRWService) executeStatement(stmt string, bindings []interfa
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
+}
+
+func buildLogEntryFromContext(ctx context.Context) *log.Entry {
+	txid := ctx.Value(tid.TransactionIDKey)
+	key := ctx.Value(contextDocumentKey)
+	table := ctx.Value(contextTable)
+	return log.WithFields(log.Fields{"table": table, "key": key, tid.TransactionIDKey: txid})
 }
