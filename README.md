@@ -61,7 +61,7 @@ paths:
 It is possible to enable write conflict detection on a specific endpoint by 
 setting to `true` the `hasConflictDetection` property in the YAML configuration file.
 
-To enable this feature, clients MUST set the special HTTP header `Previous-Document-Hash` 
+To use this feature, clients MUST set the special HTTP header `Previous-Document-Hash` 
 when they update an existing document. 
 The value of such header MUST be the hash of the current document body stored 
 in the database that the client wants to update. 
