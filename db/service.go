@@ -186,9 +186,9 @@ func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.
 func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string, previousDocHash string) (bool, error) {
 	writeLog := buildLogEntryFromContext(ctx)
 
-	setValues, setBindings := buildUpdateSetComponents(ctx, t, key, doc, params)
-	bindings := append(setBindings, key, previousDocHash)
-	updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s = ? AND %s = ?", t.name, setValues, t.primaryKey, hashColumn)
+	setStmt, values := buildUpdateSetComponents(ctx, t, key, doc, params)
+	bindings := append(values, key, previousDocHash)
+	updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s = ? AND %s = ?", t.name, setStmt, t.primaryKey, hashColumn)
 	affectedRows, err := service.executeStatement(updateStmt, bindings)
 	if err != nil {
 		writeLog.WithError(err).Error("unable to write to database")
@@ -202,12 +202,12 @@ func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.
 
 func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
 	writeLog := buildLogEntryFromContext(ctx)
-	columns, values, insertBindings := buildInsertComponents(ctx, t, key, doc, params)
-	setValues, setBindings := buildUpdateSetComponents(ctx, t, key, doc, params)
-	bindings := append(insertBindings, setBindings...)
+	columns, valuesStmt, insertBindings := buildInsertComponents(ctx, t, key, doc, params)
+	setStmt, values := buildUpdateSetComponents(ctx, t, key, doc, params)
+	bindings := append(insertBindings, values...)
 
-	insertStmt := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
-	insertStmt += " ON DUPLICATE KEY UPDATE " + setValues
+	insertStmt := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, valuesStmt)
+	insertStmt += " ON DUPLICATE KEY UPDATE " + setStmt
 	affectedRows, err := service.executeStatement(insertStmt, bindings)
 	if err != nil {
 		writeLog.WithError(err).Error("Error in writing ")
@@ -233,13 +233,13 @@ func buildInsertComponents(ctx context.Context, t table, key string, doc Documen
 
 func buildUpdateSetComponents(ctx context.Context, t table, key string, doc Document, params map[string]string) (string, []interface{}) {
 	valuesMap := generateColumnValuesMap(ctx, t, key, doc, params)
-	setValues := ""
-	var bindings []interface{}
+	setStmt := ""
+	var values []interface{}
 	for col, val := range valuesMap {
-		setValues += "," + col + "=?"
-		bindings = append(bindings, val)
+		setStmt += "," + col + "=?"
+		values = append(values, val)
 	}
-	return setValues[1:], bindings
+	return setStmt[1:], values
 }
 
 func generateColumnValuesMap(ctx context.Context, table table, key string, doc Document, params map[string]string) map[string]interface{} {
