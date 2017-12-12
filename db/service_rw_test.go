@@ -12,6 +12,7 @@ import (
 	tid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/satori/go.uuid"
 	//log "github.com/sirupsen/logrus"
+
 	"github.com/sirupsen/logrus"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
@@ -126,18 +127,14 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflictDetection() {
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), Created, status)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, hashColumn, testTable, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDocBody string
-	var actualLastModified string
-	var actualPublishRef string
-	var actualHash string
-	row.Scan(&actualDocBody, &actualLastModified, &actualPublishRef, &actualHash)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDocBody, actualDocBody, "document body")
-	assert.Equal(s.T(), testLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testTID, actualPublishRef, "publishRef")
-	assert.Equal(s.T(), docHash, actualHash, "document hash")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTable, expectedValuePerCol)
 }
 
 func (s *ServiceRWTestSuite) TestWriteUpdateWithoutConflictDetection() {
@@ -171,18 +168,14 @@ func (s *ServiceRWTestSuite) TestWriteUpdateWithoutConflictDetection() {
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), Updated, status)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, hashColumn, testTable, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDocBody string
-	var actualLastModified string
-	var actualPublishRef string
-	var actualHash string
-	row.Scan(&actualDocBody, &actualLastModified, &actualPublishRef, &actualHash)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testUpdateLastModified,
+		publishRefColumn:   testUpdatePublishRef,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDocBody, actualDocBody, "document body")
-	assert.Equal(s.T(), testUpdateLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testUpdatePublishRef, actualPublishRef, "publishRef")
-	assert.Equal(s.T(), docHash, actualHash, "document hash")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTable, expectedValuePerCol)
 }
 
 func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflict() {
@@ -204,18 +197,14 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflict() {
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), Created, status)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, hashColumn, testTableWithConflictDetection, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDocBody string
-	var actualLastModified string
-	var actualPublishRef string
-	var actualHash string
-	row.Scan(&actualDocBody, &actualLastModified, &actualPublishRef, &actualHash)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDocBody, actualDocBody, "document body")
-	assert.Equal(s.T(), testLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testTID, actualPublishRef, "publishRef")
-	assert.Equal(s.T(), docHash, actualHash, "document hash")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
 	assert.Empty(s.T(), hook.AllEntries())
 }
@@ -253,18 +242,14 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), Updated, status)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, hashColumn, testTableWithConflictDetection, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDocBody string
-	var actualLastModified string
-	var actualPublishRef string
-	var actualHash string
-	row.Scan(&actualDocBody, &actualLastModified, &actualPublishRef, &actualHash)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified2,
+		publishRefColumn:   testTID2,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDocBody, actualDocBody, "document body")
-	assert.Equal(s.T(), testLastModified2, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testTID2, actualPublishRef, "publishRef")
-	assert.Equal(s.T(), docHash, actualHash, "document hash")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
 	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
 	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
@@ -303,18 +288,14 @@ func (s *ServiceRWTestSuite) TestUpdateWithoutConflict() {
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), status, Updated)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, hashColumn, testTableWithConflictDetection, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDocBody string
-	var actualLastModified string
-	var actualPublishRef string
-	var actualHash string
-	row.Scan(&actualDocBody, &actualLastModified, &actualPublishRef, &actualHash)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID2,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDocBody, actualDocBody, "document body")
-	assert.Equal(s.T(), testLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testTID2, actualPublishRef, "publishRef")
-	assert.Equal(s.T(), docHash, actualHash, "document hash")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
 	assert.Empty(s.T(), hook.AllEntries())
 }
@@ -353,22 +334,42 @@ func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), status, Updated)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, hashColumn, testTableWithConflictDetection, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDocBody string
-	var actualLastModified string
-	var actualPublishRef string
-	var actualHash string
-	row.Scan(&actualDocBody, &actualLastModified, &actualPublishRef, &actualHash)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID2,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDocBody, actualDocBody, "document body")
-	assert.Equal(s.T(), testLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testTID2, actualPublishRef, "publishRef")
-	assert.Equal(s.T(), docHash, actualHash, "document hash")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
 	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
 	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
 	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
 	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
 	assert.Equal(s.T(), testTID2, hook.LastEntry().Data[tid.TransactionIDKey])
+}
+
+func (s *ServiceRWTestSuite) assertExpectedDataInDB(key string, keyColumn string, table string, expectedValuePerCol map[string]string) {
+	var actualValues []interface{}
+	var expectedValues []string
+	var columns []string
+	columnStmt := ""
+	for column, expectedValue := range expectedValuePerCol {
+		columns = append(columns, column)
+		columnStmt += "," + column
+		actualValue := new(string)
+		actualValues = append(actualValues, actualValue)
+		expectedValues = append(expectedValues, expectedValue)
+	}
+	columnStmt = columnStmt[1:]
+
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", columnStmt, table, keyColumn)
+	row := s.dbConn.QueryRow(query, key)
+	err := row.Scan(actualValues...)
+	require.NoError(s.T(), err)
+
+	for i, expectedValue := range expectedValues {
+		assert.Equal(s.T(), expectedValue, *actualValues[i].(*string), fmt.Sprintf("Value does not match for column %s", columns[i]))
+	}
 }
