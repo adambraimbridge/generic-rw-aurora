@@ -11,8 +11,6 @@ import (
 	"github.com/Financial-Times/generic-rw-aurora/config"
 	tid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/satori/go.uuid"
-	//log "github.com/sirupsen/logrus"
-
 	"github.com/sirupsen/logrus"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"

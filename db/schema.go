@@ -4,11 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	//	"github.com/pressly/goose" forked as
 	"strings"
 
-	"github.com/khatton-ft/goose"
+	"github.com/khatton-ft/goose" // forked from "github.com/pressly/goose"
 	log "github.com/sirupsen/logrus"
 )
 
