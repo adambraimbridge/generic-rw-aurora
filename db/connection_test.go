@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,7 +27,7 @@ func TestConnect(t *testing.T) {
 	conn, err := Connect(dbUrl)
 
 	assert.NoError(t, err, "unable to connect to test database")
-	assert.NotNil(t, conn,"returned database connection")
+	assert.NotNil(t, conn, "returned database connection")
 	conn.Close()
 }
 
@@ -34,6 +35,6 @@ func TestConnectError(t *testing.T) {
 	conn, err := Connect("foo:bar@nowhere.example.com/nodatabase")
 
 	assert.Error(t, err, "unable to connect to test database")
-	assert.NotNil(t, conn,"returned database connection")
+	assert.NotNil(t, conn, "returned database connection")
 	conn.Close()
 }

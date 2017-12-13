@@ -1,12 +1,16 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/Financial-Times/generic-rw-aurora/config"
+	tid "github.com/Financial-Times/transactionid-utils-go"
+	"github.com/go-sql-driver/mysql"
 	"github.com/oliveagle/jsonpath"
 	log "github.com/sirupsen/logrus"
 )
@@ -15,20 +19,32 @@ const (
 	testSql = "SELECT COUNT(*) FROM goose_db_version"
 )
 
+const hashColumn = "hash"
+const conflictLogMessage = "conflict detected while updating document"
+
+const Created = true
+const Updated = false
+
+const contextDocumentKey = "contextDocumentKey"
+const contextTable = "contextTable"
+
+var errDataNotAffectedByOperation = errors.New("data is not affected by the operation")
+
 type RWMonitor interface {
 	Ping() (string, error)
 	SchemaCheck() (string, error)
 }
 
 type RWService interface {
-	Read(table string, key string) (string, error)
-	Write(table string, key string, doc string, params map[string]string, metadata map[string]string) (bool,error)
+	Read(ctx context.Context, table string, key string) (Document, error)
+	Write(ctx context.Context, table string, key string, doc Document, params map[string]string, previousDocumentHash string) (bool, string, error)
 }
 
 type table struct {
-	name       string
-	columns    map[string]string
-	primaryKey string
+	name                 string
+	columns              map[string]string
+	primaryKey           string
+	hasConflictDetection bool
 }
 
 type AuroraRWService struct {
@@ -50,7 +66,12 @@ func (t *table) columnMapping() string {
 func NewService(conn *sql.DB, migrate bool, rwConfig *config.Config) *AuroraRWService {
 	tables := make(map[string]table)
 	for _, tableConfig := range rwConfig.Paths {
-		t := table{tableConfig.Table, tableConfig.Columns, tableConfig.PrimaryKey}
+		t := table{
+			tableConfig.Table,
+			tableConfig.Columns,
+			tableConfig.PrimaryKey,
+			tableConfig.HasConflictDetection,
+		}
 		tables[tableConfig.Table] = t
 		log.WithFields(log.Fields{"table": t.name, "primaryKey": t.primaryKey, "columnMapping": t.columnMapping()}).Info("mapping initialised")
 	}
@@ -81,76 +102,148 @@ func (service *AuroraRWService) SchemaCheck() (string, error) {
 	return "Database schema is mismatched to this service", service.schemaMismatch
 }
 
-func (service *AuroraRWService) Read(tableName string, key string) (string, error) {
-	log.WithField("table", tableName).WithField("key", key).Info("Read")
+func (service *AuroraRWService) Read(ctx context.Context, tableName string, key string) (Document, error) {
+	txid, _ := tid.GetTransactionIDFromContext(ctx)
+	readLog := log.WithField("table", tableName).
+		WithField("key", key).
+		WithField(tid.TransactionIDKey, txid)
+
+	readLog.Info("Reading document from database")
 	table := service.rwConfig[tableName]
 	var docColumn string
+
 	for col, expr := range table.columns {
 		if expr == "$" {
 			docColumn = col
 			break
 		}
 	}
+
 	if docColumn == "" {
-		log.WithField("table", tableName).Error("no document column is configured")
-		return "", fmt.Errorf("no document column is configured for table %s", tableName)
+		readLog.Error("document column is not configured")
+		return Document{}, fmt.Errorf("document column is not configured for table %s", tableName)
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", docColumn, table.name, table.primaryKey)
+	query := fmt.Sprintf("SELECT %s, %s FROM %s WHERE %s = ?", docColumn, hashColumn, table.name, table.primaryKey)
 
 	row := service.conn.QueryRow(query, key)
 
-	var doc string
-	err := row.Scan(&doc)
+	var docBody string
+	var docHash string
+	err := row.Scan(&docBody, &docHash)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
-			log.WithError(err).Error("unable to read from database")
+			readLog.WithError(err).Error("unable to read from database")
 		}
-		return "", err
+		return Document{}, err
 	}
 
+	doc := Document{
+		Body: []byte(docBody),
+		Hash: docHash,
+	}
 	return doc, nil
 }
 
-func (service *AuroraRWService) Write(tableName string, key string, doc string, params map[string]string, metadata map[string]string) (bool,error) {
-	wlog := log.WithFields(log.Fields{"table": tableName, "key": key})
+func (service *AuroraRWService) Write(ctx context.Context, tableName string, key string, doc Document, params map[string]string, previousDocHash string) (bool, string, error) {
+	ctx = context.WithValue(ctx, contextTable, tableName)
+	ctx = context.WithValue(ctx, contextDocumentKey, key)
 	table := service.rwConfig[tableName]
-
-	values := service.generateColumnValues(table, key, doc, params, metadata)
-
-	// generate a list of columns and bind values for the INSERT clause
-	insertCols := ""
-	bindings := []interface{}{}
-	for col, val := range values {
-		insertCols += "," + col
-		bindings = append(bindings, val)
-	}
-
-	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, insertCols[1:], strings.Repeat(",?", len(values))[1:])
-	upsert := insert + " ON DUPLICATE KEY UPDATE "
-	// generate a list of columns and bind values for the UPSERT clause
-	for col, val := range values {
-		if col != table.primaryKey {
-			upsert += fmt.Sprintf(" %s = ?,", col)
-			bindings = append(bindings, val)
+	doc.Hash = hash(doc.Body)
+	var status bool
+	var err error
+	if table.hasConflictDetection {
+		if previousDocHash == "" {
+			status, err = service.insertDocumentWithConflictDetection(ctx, table, key, doc, params)
+		} else {
+			status, err = service.updateDocumentWithConflictDetection(ctx, table, key, doc, params, previousDocHash)
 		}
-	}
-	upsert = upsert[:len(upsert) - 1]
-
-	var created bool
-	res, err := service.conn.Exec(upsert, bindings...)
-	if err != nil {
-		wlog.WithError(err).Error("unable to write to database")
 	} else {
-		i, _ := res.RowsAffected()
-		created = i == 1
+		status, err = service.insertDocumentOnDuplicateKeyUpdate(ctx, table, key, doc, params)
 	}
-	return created, err
+	return status, doc.Hash, err
 }
 
-func (service *AuroraRWService) generateColumnValues(table table, key string, doc string, params map[string]string, metadata map[string]string) map[string]interface{} {
-	wlog := log.WithFields(log.Fields{"table": table.name, "key": key})
+func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
+	writeLog := buildLogEntryFromContext(ctx)
+	columns, values, bindings := buildInsertComponents(ctx, t, key, doc, params)
+	insert := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, values)
+
+	_, err := service.executeStatement(insert, bindings)
+	if err != nil {
+		if mysqlErr, ok := err.(*mysql.MySQLError); ok {
+			if mysqlErr.Number == 1062 {
+				writeLog.WithError(err).Error(conflictLogMessage)
+				return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
+			}
+		}
+		writeLog.WithError(err).Error("unable to write to database")
+	}
+	return Created, err
+}
+
+func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.Context, t table, key string, doc Document, params map[string]string, previousDocHash string) (bool, error) {
+	writeLog := buildLogEntryFromContext(ctx)
+
+	setStmt, values := buildUpdateSetComponents(ctx, t, key, doc, params)
+	bindings := append(values, key, previousDocHash)
+	updateStmt := fmt.Sprintf("UPDATE %s SET %s WHERE %s = ? AND %s = ?", t.name, setStmt, t.primaryKey, hashColumn)
+	affectedRows, err := service.executeStatement(updateStmt, bindings)
+	if err != nil {
+		writeLog.WithError(err).Error("unable to write to database")
+	}
+	if affectedRows == 0 {
+		writeLog.WithError(errDataNotAffectedByOperation).Error(conflictLogMessage)
+		return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
+	}
+	return Updated, err
+}
+
+func (service *AuroraRWService) insertDocumentOnDuplicateKeyUpdate(ctx context.Context, t table, key string, doc Document, params map[string]string) (bool, error) {
+	writeLog := buildLogEntryFromContext(ctx)
+	columns, valuesStmt, insertBindings := buildInsertComponents(ctx, t, key, doc, params)
+	setStmt, values := buildUpdateSetComponents(ctx, t, key, doc, params)
+	bindings := append(insertBindings, values...)
+
+	insertStmt := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", t.name, columns, valuesStmt)
+	insertStmt += " ON DUPLICATE KEY UPDATE " + setStmt
+	affectedRows, err := service.executeStatement(insertStmt, bindings)
+	if err != nil {
+		writeLog.WithError(err).Error("Error in writing ")
+	}
+	if affectedRows == 1 {
+		return Created, err
+	}
+	return Updated, err
+}
+
+func buildInsertComponents(ctx context.Context, t table, key string, doc Document, params map[string]string) (string, string, []interface{}) {
+	valuesMap := generateColumnValuesMap(ctx, t, key, doc, params)
+	insertCols := ""
+	valuesStmt := ""
+	var bindings []interface{}
+	for col, val := range valuesMap {
+		insertCols += "," + col
+		valuesStmt += ",?"
+		bindings = append(bindings, val)
+	}
+	return insertCols[1:], valuesStmt[1:], bindings
+}
+
+func buildUpdateSetComponents(ctx context.Context, t table, key string, doc Document, params map[string]string) (string, []interface{}) {
+	valuesMap := generateColumnValuesMap(ctx, t, key, doc, params)
+	setStmt := ""
+	var values []interface{}
+	for col, val := range valuesMap {
+		setStmt += "," + col + "=?"
+		values = append(values, val)
+	}
+	return setStmt[1:], values
+}
+
+func generateColumnValuesMap(ctx context.Context, table table, key string, doc Document, params map[string]string) map[string]interface{} {
+	writeLog := buildLogEntryFromContext(ctx)
 
 	values := make(map[string]interface{})
 	var jsondoc interface{}
@@ -162,20 +255,20 @@ func (service *AuroraRWService) generateColumnValues(table table, key string, do
 			val = params[expr[1:]]
 		} else if strings.HasPrefix(expr, "@.") {
 			// @. - in the metadata, e.g. @.timestamp
-			val = metadata[expr[2:]]
+			val = doc.Metadata[expr[2:]]
 		} else if expr == "$" {
 			// $ - the whole document
-			val = doc
+			val = doc.Body
 		} else if strings.HasPrefix(expr, "$") {
 			// $. - a JSONpath in the document, e.g. $.post.body
 			// only unmarshal into a JSON document if necessary, and only once
 			if jsondoc == nil {
-				json.Unmarshal([]byte(doc), &jsondoc)
+				json.Unmarshal(doc.Body, &jsondoc)
 			}
 			var err error
 			val, err = jsonpath.JsonPathLookup(jsondoc, expr)
 			if err != nil {
-				wlog.WithFields(log.Fields{"column": col, "expr": expr}).Warn("unable to extract JSONPath value from document")
+				writeLog.WithFields(log.Fields{"column": col, "expr": expr}).Warn("unable to extract JSONPath value from document")
 			}
 		} else {
 			// a literal value
@@ -184,5 +277,23 @@ func (service *AuroraRWService) generateColumnValues(table table, key string, do
 		values[col] = val
 	}
 
+	values[hashColumn] = doc.Hash
+
 	return values
+}
+
+func (service *AuroraRWService) executeStatement(stmt string, bindings []interface{}) (int64, error) {
+	res, err := service.conn.Exec(stmt, bindings...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+func buildLogEntryFromContext(ctx context.Context) *log.Entry {
+	txid := ctx.Value(tid.TransactionIDKey)
+	key := ctx.Value(contextDocumentKey)
+	table := ctx.Value(contextTable)
+	return log.WithFields(log.Fields{"table": table, "key": key, tid.TransactionIDKey: txid})
 }

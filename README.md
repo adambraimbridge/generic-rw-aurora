@@ -51,7 +51,19 @@ paths:
       publish_ref: "@.publishRef"
       body: "$"
     primaryKey: uuid
+    hasConflictDetection: true
   "/published/content/:id/annotations":
     ...
 ```
 
+## Write conflict detection 
+
+It is possible to enable write conflict detection on a specific endpoint by 
+setting to `true` the `hasConflictDetection` property in the YAML configuration file.
+
+To use this feature, clients MUST set the special HTTP header `Previous-Document-Hash` 
+when they update an existing document. 
+The value of such header MUST be the hash of the current document body stored 
+in the database that the client wants to update. 
+The hash of the document is returned by each GET and PUT response in the `Document-Hash` 
+HTTP header.

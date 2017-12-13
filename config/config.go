@@ -11,9 +11,10 @@ type Config struct {
 }
 
 type Mapping struct {
-	Table      string            `yaml:"table"`
-	Columns    map[string]string `yaml:"columns"`
-	PrimaryKey string            `yaml:"primaryKey"`
+	Table                string            `yaml:"table"`
+	Columns              map[string]string `yaml:"columns"`
+	PrimaryKey           string            `yaml:"primaryKey"`
+	HasConflictDetection bool              `yaml:"hasConflictDetection"`
 }
 
 func ReadConfig(yml string) (*Config, error) {

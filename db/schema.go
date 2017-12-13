@@ -4,11 +4,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	//	"github.com/pressly/goose" forked as
-	"github.com/khatton-ft/goose"
-	log "github.com/sirupsen/logrus"
 	"strings"
+
+	"github.com/khatton-ft/goose" // forked from "github.com/pressly/goose"
+	log "github.com/sirupsen/logrus"
 )
 
 type migration struct {
@@ -21,7 +20,7 @@ type migration struct {
 const (
 	dbLockName = "goose"
 
-	ErrDbLockFailure = "unable to obtain database lock"
+	ErrDbLockFailure        = "unable to obtain database lock"
 	ErrDbReleaseLockFailure = "unable to release database lock"
 )
 

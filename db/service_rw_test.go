@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -8,20 +9,23 @@ import (
 	"time"
 
 	"github.com/Financial-Times/generic-rw-aurora/config"
+	tid "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
+	logTest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
 const (
-	testTableName      = "draft_annotations"
-	testKeyColumn      = "uuid"
-	testDocColumn      = "body"
-	lastModifiedColumn = "last_modified"
-	publishRefColumn   = "publish_ref"
-
-	testDocTemplate = `{"foo":"%s"}`
+	testTable                      = "published_annotations"
+	testTableWithConflictDetection = "draft_annotations"
+	testKeyColumn                  = "uuid"
+	testDocColumn                  = "body"
+	lastModifiedColumn             = "last_modified"
+	publishRefColumn               = "publish_ref"
+	testDocTemplate                = `{"foo":"%s"}`
 )
 
 type ServiceRWTestSuite struct {
@@ -73,87 +77,297 @@ func (s *ServiceRWTestSuite) TearDownSuite() {
 
 func (s *ServiceRWTestSuite) TestRead() {
 	testKey := uuid.NewV4().String()
-	testDoc := fmt.Sprintf(testDocTemplate, time.Now().String())
-	params := map[string]string{"id": testKey}
-	metadata := make(map[string]string)
-	metadata["timestamp"] = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	metadata["publishRef"] = "tid_testread"
-	created, err := s.service.Write(testTableName, testKey, testDoc, params, metadata)
-	require.NoError(s.T(), err)
-	require.True(s.T(), created, "document should have been created")
 
-	actual, err := s.service.Read(testTableName, testKey)
+	testTID := "tid_testread"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set("publishRef", testTID)
+
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
+
+	params := map[string]string{"id": testKey}
+
+	status, expectedDocHash, err := s.service.Write(context.Background(), testTable, testKey, testDoc, params, "")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), Created, status)
+
+	actual, err := s.service.Read(testCtx, testTable, testKey)
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), testDoc, actual, "document read from store")
+	assert.Equal(s.T(), testDoc.Body, actual.Body, "document read from store")
+	assert.Equal(s.T(), expectedDocHash, actual.Hash)
 }
 
 func (s *ServiceRWTestSuite) TestReadNotFound() {
 	testKey := uuid.NewV4().String()
-
-	_, err := s.service.Read(testTableName, testKey)
+	testTID := "tid_testread"
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
+	_, err := s.service.Read(testCtx, testTable, testKey)
 	assert.EqualError(s.T(), err, sql.ErrNoRows.Error())
 }
 
-func (s *ServiceRWTestSuite) TestWriteCreate() {
+func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflictDetection() {
 	testKey := uuid.NewV4().String()
-	testDoc := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	testPublishRef := "tid_testcreate"
+	testTID := "tid_testcreate"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testLastModified)
+	testDoc.Metadata.Set("publishRef", testTID)
 
 	params := map[string]string{"id": testKey}
-	metadata := make(map[string]string)
-	metadata["timestamp"] = testLastModified
-	metadata["publishRef"] = testPublishRef
 
-	created, err := s.service.Write(testTableName, testKey, testDoc, params, metadata)
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
+
+	status, docHash, err := s.service.Write(testCtx, testTable, testKey, testDoc, params, "")
 	assert.NoError(s.T(), err)
-	assert.True(s.T(), created, "document should have been created")
+	assert.Equal(s.T(), Created, status)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, testTableName, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDoc string
-	var actualLastModified string
-	var actualPublishRef string
-	row.Scan(&actualDoc, &actualLastModified, &actualPublishRef)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDoc, actualDoc, "document")
-	assert.Equal(s.T(), testLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testPublishRef, actualPublishRef, "publishRef")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTable, expectedValuePerCol)
 }
 
-func (s *ServiceRWTestSuite) TestWriteUpdate() {
+func (s *ServiceRWTestSuite) TestWriteUpdateWithoutConflictDetection() {
 	testKey := uuid.NewV4().String()
 	testCreateLastModified := time.Now().Truncate(time.Hour).UTC().Format("2006-01-02T15:04:05.000Z")
-	testDoc := fmt.Sprintf(testDocTemplate, testCreateLastModified)
+	testDocBody := fmt.Sprintf(testDocTemplate, testCreateLastModified)
 	testCreatePublishRef := "tid_testupdate_1"
 
-	params := map[string]string{"id": testKey}
-	metadata := make(map[string]string)
-	metadata["timestamp"] = testCreateLastModified
-	metadata["publishRef"] = testCreatePublishRef
+	testCtx := tid.TransactionAwareContext(context.Background(), testCreatePublishRef)
 
-	_, err := s.service.Write(testTableName, testKey, testDoc, params, metadata)
-	assert.NoError(s.T(), err)
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testCreateLastModified)
+	testDoc.Metadata.Set("publishRef", testCreatePublishRef)
+
+	params := map[string]string{"id": testKey}
+
+	_, _, err := s.service.Write(testCtx, testTable, testKey, testDoc, params, "")
+	require.NoError(s.T(), err)
 
 	testUpdateLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	testDoc = fmt.Sprintf(testDocTemplate, testUpdateLastModified)
+	testDocBody = fmt.Sprintf(testDocTemplate, testUpdateLastModified)
 	testUpdatePublishRef := "tid_testupdate_2"
-	metadata = make(map[string]string)
-	metadata["timestamp"] = testUpdateLastModified
-	metadata["publishRef"] = testUpdatePublishRef
 
-	updated, err := s.service.Write(testTableName, testKey, testDoc, params, metadata)
+	testDoc = NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testUpdateLastModified)
+	testDoc.Metadata.Set("publishRef", testUpdatePublishRef)
+
+	testCtx = tid.TransactionAwareContext(context.Background(), testCreatePublishRef)
+
+	status, docHash, err := s.service.Write(testCtx, testTable, testKey, testDoc, params, "")
 	assert.NoError(s.T(), err)
-	assert.False(s.T(), updated, "document should have been updated")
+	assert.Equal(s.T(), Updated, status)
 
-	query := fmt.Sprintf("SELECT %s, %s, %s FROM %s WHERE %s = ?", testDocColumn, lastModifiedColumn, publishRefColumn, testTableName, testKeyColumn)
-	row := s.dbConn.QueryRow(query, testKey)
-	var actualDoc string
-	var actualLastModified string
-	var actualPublishRef string
-	row.Scan(&actualDoc, &actualLastModified, &actualPublishRef)
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testUpdateLastModified,
+		publishRefColumn:   testUpdatePublishRef,
+		hashColumn:         docHash,
+	}
 
-	assert.Equal(s.T(), testDoc, actualDoc, "document")
-	assert.Equal(s.T(), testUpdateLastModified, actualLastModified, "lastModified")
-	assert.Equal(s.T(), testUpdatePublishRef, actualPublishRef, "publishRef")
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTable, expectedValuePerCol)
+}
+
+func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflict() {
+	hook := logTest.NewGlobal()
+	testKey := uuid.NewV4().String()
+	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	testTID := "tid_testcreate"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testLastModified)
+	testDoc.Metadata.Set("publishRef", testTID)
+
+	params := map[string]string{"id": testKey}
+
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
+
+	status, docHash, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, "")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), Created, status)
+
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID,
+		hashColumn:         docHash,
+	}
+
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
+
+	assert.Empty(s.T(), hook.AllEntries())
+}
+
+func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
+	hook := logTest.NewGlobal()
+	testKey := uuid.NewV4().String()
+	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	testTID1 := "tid_testcreate_1"
+	testTID2 := "tid_testcreate_2"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testLastModified)
+	testDoc.Metadata.Set("publishRef", testTID1)
+
+	params := map[string]string{"id": testKey}
+
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID1)
+
+	status, docHash, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, "")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), Created, status)
+
+	testLastModified2 := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	testDocBody = fmt.Sprintf(testDocTemplate, testLastModified)
+
+	testDoc = NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testLastModified2)
+	testDoc.Metadata.Set("publishRef", testTID2)
+
+	testCtx = tid.TransactionAwareContext(context.Background(), testTID2)
+
+	status, docHash, err = s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, "")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), Updated, status)
+
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified2,
+		publishRefColumn:   testTID2,
+		hashColumn:         docHash,
+	}
+
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
+
+	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
+	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
+	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
+	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
+	assert.Equal(s.T(), testTID2, hook.LastEntry().Data[tid.TransactionIDKey])
+}
+
+func (s *ServiceRWTestSuite) TestUpdateWithoutConflict() {
+	hook := logTest.NewGlobal()
+	testKey := uuid.NewV4().String()
+
+	testTID1 := "tid_testupdate_1"
+	testTID2 := "tid_testupdate_2"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set("publishRef", testTID1)
+
+	params := map[string]string{"id": testKey}
+
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID1)
+
+	status, previousDocHash, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, "")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), Created, status)
+
+	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	testDocBody = fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc = NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testLastModified)
+	testDoc.Metadata.Set("publishRef", testTID2)
+
+	status, docHash, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, previousDocHash)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), status, Updated)
+
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID2,
+		hashColumn:         docHash,
+	}
+
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
+
+	assert.Empty(s.T(), hook.AllEntries())
+}
+
+func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
+	hook := logTest.NewGlobal()
+	testKey := uuid.NewV4().String()
+
+	testTID1 := "tid_testupdate_1"
+	testTID2 := "tid_testupdate_2"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set("publishRef", testTID1)
+
+	params := map[string]string{"id": testKey}
+
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID1)
+
+	status, _, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, "")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), Created, status)
+
+	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	testDocBody = fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc = NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", testLastModified)
+	testDoc.Metadata.Set("publishRef", testTID2)
+
+	aVeryOldHash := "01234567890123456789012345678901234567890123456789012345"
+
+	testCtx = tid.TransactionAwareContext(context.Background(), testTID2)
+
+	status, docHash, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, aVeryOldHash)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), status, Updated)
+
+	expectedValuePerCol := map[string]string{
+		testDocColumn:      testDocBody,
+		lastModifiedColumn: testLastModified,
+		publishRefColumn:   testTID2,
+		hashColumn:         docHash,
+	}
+
+	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
+
+	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
+	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
+	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
+	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
+	assert.Equal(s.T(), testTID2, hook.LastEntry().Data[tid.TransactionIDKey])
+}
+
+func (s *ServiceRWTestSuite) assertExpectedDataInDB(key string, keyColumn string, table string, expectedValuePerCol map[string]string) {
+	var actualValues []interface{}
+	var expectedValues []string
+	var columns []string
+	columnStmt := ""
+	for column, expectedValue := range expectedValuePerCol {
+		columns = append(columns, column)
+		columnStmt += "," + column
+		actualValue := new(string)
+		actualValues = append(actualValues, actualValue)
+		expectedValues = append(expectedValues, expectedValue)
+	}
+	columnStmt = columnStmt[1:]
+
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", columnStmt, table, keyColumn)
+	row := s.dbConn.QueryRow(query, key)
+	err := row.Scan(actualValues...)
+	require.NoError(s.T(), err)
+
+	for i, expectedValue := range expectedValues {
+		assert.Equal(s.T(), expectedValue, *actualValues[i].(*string), fmt.Sprintf("Value does not match for column %s", columns[i]))
+	}
 }

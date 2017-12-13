@@ -107,19 +107,19 @@
 			"revisionTime": "2017-10-27T12:24:14Z"
 		},
 		{
-			"checksumSHA1": "boXXAylima6UWDPCp0u6ogxJgK8=",
+			"checksumSHA1": "Q3gSP85IiKQxQx4jMdkgn0S3Jug=",
 			"path": "github.com/mohae/utilitybelt/deepcopy",
 			"revision": "d4f15c760e5a10346e7a4f25537ae32d3c839d83",
 			"revisionTime": "2016-08-29T23:43:22Z"
 		},
 		{
-			"checksumSHA1": "03kQ6lt09RtUAlmqcOybBYIQHco=",
+			"checksumSHA1": "lsHmtKPdQZ59dxYBIPAF9ECU540=",
 			"path": "github.com/oliveagle/jsonpath",
 			"revision": "46b039cf586ce41b6ef05286230e38b648bbffe2",
 			"revisionTime": "2016-05-06T05:13:32Z"
 		},
 		{
-			"checksumSHA1": "R3yk3OJzuq4MVfVGX5AhkkYv1ko=",
+			"checksumSHA1": "LuFv4/jlrmFNnDb/5SCSEPAM9vU=",
 			"path": "github.com/pmezard/go-difflib/difflib",
 			"revision": "792786c7400a136282c1664665ae0a8db921c6c2",
 			"revisionTime": "2016-01-10T10:55:54Z"
@@ -139,6 +139,14 @@
 		{
 			"checksumSHA1": "5+eS1Ticg5wkpsdNoPiST3OQcIg=",
 			"path": "github.com/sirupsen/logrus",
+			"revision": "f006c2ac4710855cf0f916dd6b77acf6b048dc6e",
+			"revisionTime": "2017-08-15T20:20:55Z",
+			"version": "v1.0.3",
+			"versionExact": "v1.0.3"
+		},
+		{
+			"checksumSHA1": "Kt+BhrXMyYvOc9TGiBVOSNn6wcc=",
+			"path": "github.com/sirupsen/logrus/hooks/test",
 			"revision": "f006c2ac4710855cf0f916dd6b77acf6b048dc6e",
 			"revisionTime": "2017-08-15T20:20:55Z",
 			"version": "v1.0.3",

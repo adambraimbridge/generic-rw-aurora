@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -11,29 +12,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Financial-Times/generic-rw-aurora/db"
 	"github.com/husobee/vestigo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 const (
-	testTable = "test_table"
-	testKey   = "1234"
-	doc = `{"foo":"bar"}`
+	testTable   = "test_table"
+	testKey     = "1234"
+	docBody     = `{"foo":"bar"}`
+	docHash     = "34563ba43d923189d9e3aefd038683ac4f1f1eab72c2684926220d08"
+	prevDocHash = "bfd86d638f3ffda37b45ddf35fb29ee387f3bb8df5278db4b40e9e72"
 )
 
 type mockRW struct {
 	mock.Mock
 }
 
-func (m *mockRW) Read(table string, key string) (string, error) {
-	args := m.Called(table, key)
-	return args.String(0), args.Error(1)
+func (m *mockRW) Read(ctx context.Context, table string, key string) (db.Document, error) {
+	args := m.Called(ctx, table, key)
+	return args.Get(0).(db.Document), args.Error(1)
 }
 
-func (m *mockRW) Write(table string, key string, doc string, params map[string]string, metadata map[string]string) (bool, error) {
-	args := m.Called(table, key, doc, params, metadata)
-	return args.Bool(0), args.Error(1)
+func (m *mockRW) Write(ctx context.Context, table string, key string, doc db.Document, params map[string]string, previousDocumentHash string) (bool, string, error) {
+	args := m.Called(ctx, table, key, doc, params, previousDocumentHash)
+	return args.Bool(0), args.String(1), args.Error(2)
 }
 
 type mockReader struct {
@@ -46,8 +50,11 @@ func (m *mockReader) Read(p []byte) (n int, err error) {
 }
 
 func TestRead(t *testing.T) {
+	doc := db.NewDocument([]byte(docBody))
+	doc.Hash = docHash
+
 	rw := &mockRW{}
-	rw.On("Read", testTable, testKey).Return(doc, nil)
+	rw.On("Read", mock.AnythingOfType("*context.valueCtx"), testTable, testKey).Return(doc, nil)
 
 	router := vestigo.NewRouter()
 	router.Get(fmt.Sprintf("/%s/:id", testTable), Read(rw, testTable))
@@ -61,7 +68,8 @@ func TestRead(t *testing.T) {
 	assert.Equal(t, http.StatusOK, actual.StatusCode, "HTTP status")
 	assert.Equal(t, "application/json", actual.Header.Get("Content-Type"), "content type")
 	body, _ := ioutil.ReadAll(actual.Body)
-	assert.Equal(t, doc, string(body), "response body")
+	assert.Equal(t, docBody, string(body), "response body")
+	assert.Equal(t, docHash, actual.Header.Get(documentHashHeader))
 
 	rw.AssertExpectations(t)
 }
@@ -69,7 +77,7 @@ func TestRead(t *testing.T) {
 func TestReadNotFound(t *testing.T) {
 	rw := &mockRW{}
 
-	rw.On("Read", testTable, testKey).Return("", sql.ErrNoRows)
+	rw.On("Read", mock.AnythingOfType("*context.valueCtx"), testTable, testKey).Return(db.Document{}, sql.ErrNoRows)
 
 	router := vestigo.NewRouter()
 	router.Get(fmt.Sprintf("/%s/:id", testTable), Read(rw, testTable))
@@ -85,6 +93,7 @@ func TestReadNotFound(t *testing.T) {
 	var errorResponse map[string]string
 	json.NewDecoder(actual.Body).Decode(&errorResponse)
 	assert.Equal(t, "No document found.", errorResponse["message"])
+	assert.Empty(t, actual.Header.Get(documentHashHeader))
 
 	rw.AssertExpectations(t)
 }
@@ -92,7 +101,7 @@ func TestReadNotFound(t *testing.T) {
 func TestReadError(t *testing.T) {
 	rw := &mockRW{}
 	msg := "Some unexpected error"
-	rw.On("Read", testTable, testKey).Return("", errors.New(msg))
+	rw.On("Read", mock.AnythingOfType("*context.valueCtx"), testTable, testKey).Return(db.Document{}, errors.New(msg))
 
 	router := vestigo.NewRouter()
 	router.Get(fmt.Sprintf("/%s/:id", testTable), Read(rw, testTable))
@@ -108,42 +117,47 @@ func TestReadError(t *testing.T) {
 	var errorResponse map[string]string
 	json.NewDecoder(actual.Body).Decode(&errorResponse)
 	assert.Equal(t, msg, errorResponse["message"])
+	assert.Empty(t, actual.Header.Get(documentHashHeader))
 
 	rw.AssertExpectations(t)
 }
 
 func TestWriteCreate(t *testing.T) {
 	rw := &mockRW{}
-	rw.On("Write", testTable, testKey, doc, map[string]string{"id":testKey}, mock.AnythingOfType("map[string]string")).Return(true, nil)
+	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, mock.AnythingOfType("db.Document"), map[string]string{"id": testKey}, prevDocHash).Return(true, docHash, nil)
 
 	router := vestigo.NewRouter()
 	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable))
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(doc))
+	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(docBody))
+	req.Header.Set(previousDocumentHashHeader, prevDocHash)
 
 	router.ServeHTTP(w, req)
 	actual := w.Result()
 
 	assert.Equal(t, http.StatusCreated, actual.StatusCode, "HTTP status")
+	assert.Equal(t, docHash, actual.Header.Get(documentHashHeader))
 
 	rw.AssertExpectations(t)
 }
 
 func TestWriteUpdate(t *testing.T) {
 	rw := &mockRW{}
-	rw.On("Write", testTable, testKey, doc, map[string]string{"id":testKey}, mock.AnythingOfType("map[string]string")).Return(false, nil)
+	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, mock.AnythingOfType("db.Document"), map[string]string{"id": testKey}, prevDocHash).Return(false, docHash, nil)
 
 	router := vestigo.NewRouter()
 	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable))
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(doc))
+	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(docBody))
+	req.Header.Set(previousDocumentHashHeader, prevDocHash)
 
 	router.ServeHTTP(w, req)
 	actual := w.Result()
 
 	assert.Equal(t, http.StatusOK, actual.StatusCode, "HTTP status")
+	assert.Equal(t, docHash, actual.Header.Get(documentHashHeader))
 
 	rw.AssertExpectations(t)
 }
@@ -151,13 +165,14 @@ func TestWriteUpdate(t *testing.T) {
 func TestWriteError(t *testing.T) {
 	rw := &mockRW{}
 	msg := "Some unexpected error"
-	rw.On("Write", testTable, testKey, doc, map[string]string{"id":testKey}, mock.AnythingOfType("map[string]string")).Return(false, errors.New(msg))
+	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, mock.AnythingOfType("db.Document"), map[string]string{"id": testKey}, prevDocHash).Return(false, "", errors.New(msg))
 
 	router := vestigo.NewRouter()
 	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable))
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(doc))
+	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(docBody))
+	req.Header.Set(previousDocumentHashHeader, prevDocHash)
 
 	router.ServeHTTP(w, req)
 	actual := w.Result()
@@ -172,6 +187,9 @@ func TestWriteError(t *testing.T) {
 }
 
 func TestWriteEntityReadError(t *testing.T) {
+	doc := db.NewDocument([]byte(docBody))
+	doc.Hash = docHash
+
 	rw := &mockRW{}
 
 	router := vestigo.NewRouter()
@@ -191,6 +209,7 @@ func TestWriteEntityReadError(t *testing.T) {
 	var errorResponse map[string]string
 	json.NewDecoder(actual.Body).Decode(&errorResponse)
 	assert.Equal(t, msg, errorResponse["message"])
+	assert.Empty(t, actual.Header.Get(documentHashHeader))
 
 	rw.AssertExpectations(t)
 }
