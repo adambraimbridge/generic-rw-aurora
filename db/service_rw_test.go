@@ -249,8 +249,8 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
 
 	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
-	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
-	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
+	assert.Equal(s.T(), "document hash conflict detected while updating document", hook.LastEntry().Message)
+	assert.Equal(s.T(), logrus.WarnLevel, hook.LastEntry().Level)
 	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
 	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
 	assert.Equal(s.T(), testTID2, hook.LastEntry().Data[tid.TransactionIDKey])
@@ -341,8 +341,8 @@ func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
 
 	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
-	assert.Equal(s.T(), "conflict detected while updating document", hook.LastEntry().Message)
-	assert.Equal(s.T(), logrus.ErrorLevel, hook.LastEntry().Level)
+	assert.Equal(s.T(), "document hash conflict detected while updating document", hook.LastEntry().Message)
+	assert.Equal(s.T(), logrus.WarnLevel, hook.LastEntry().Level)
 	assert.Equal(s.T(), testKey, hook.LastEntry().Data["key"])
 	assert.Equal(s.T(), testTableWithConflictDetection, hook.LastEntry().Data["table"])
 	assert.Equal(s.T(), testTID2, hook.LastEntry().Data[tid.TransactionIDKey])
