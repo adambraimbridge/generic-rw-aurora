@@ -20,7 +20,7 @@ const (
 )
 
 const hashColumn = "hash"
-const conflictLogMessage = "conflict detected while updating document"
+const conflictLogMessage = "document hash conflict detected while updating document"
 
 const Created = true
 const Updated = false
@@ -174,7 +174,7 @@ func (service *AuroraRWService) insertDocumentWithConflictDetection(ctx context.
 	if err != nil {
 		if mysqlErr, ok := err.(*mysql.MySQLError); ok {
 			if mysqlErr.Number == 1062 {
-				writeLog.WithError(err).Error(conflictLogMessage)
+				writeLog.Warn(conflictLogMessage)
 				return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
 			}
 		}
@@ -194,7 +194,7 @@ func (service *AuroraRWService) updateDocumentWithConflictDetection(ctx context.
 		writeLog.WithError(err).Error("unable to write to database")
 	}
 	if affectedRows == 0 {
-		writeLog.WithError(errDataNotAffectedByOperation).Error(conflictLogMessage)
+		writeLog.Warn(conflictLogMessage)
 		return service.insertDocumentOnDuplicateKeyUpdate(ctx, t, key, doc, params)
 	}
 	return Updated, err
