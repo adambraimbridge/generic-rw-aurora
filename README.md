@@ -23,8 +23,8 @@ Run with `-short` to skip database integration tests.
 To run database integration tests, you must set the environment variable `DB_TEST_URL` to a connection string for a MySQL database, with credentials that have privileges to create databases and users. The test cases will provision a test user `pac_test_user` and up-to-date schema in the database.
 
 
-To test lcally run a local instance of mySql. use the version specified in cicelci config.
-e.g. DB_TEST_URL=username:password@tcp(127.0.0.1:3306)/dbname
+To test locally run a local instance of mySql. Use the version specified in circleci config.
+e.g. export DB_TEST_URL=username:password@tcp(127.0.0.1:3306)/dbname
 
 ## Endpoints
 
