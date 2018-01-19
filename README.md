@@ -34,6 +34,11 @@ The application also has the standard `/__health`, `/__gtg` and `/__build-info` 
 
 ## Configuration
 
+Table schemas can be managed by Goose. The versions are stored in `db/schema.go`.
+In practice, rollback steps are listed for reference only; they must be applied manually if required.
+
+Note that _every_ table used by this service requires a `hash` column, even if write conflict detection (see below) is not enabled.
+
 The application requires a YAML configuration file to map between HTTP endpoints and tables in the Aurora database.
 
 The root object for the configuration is `paths`, which contains a mapping between URL paths and persistence stores. Paths may contain `:param-name` placeholders, which are recognised in the routing library. A path is mapped to a table, and a mapping of columns to expressions. The primary key column must also be specified.

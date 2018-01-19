@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"context"
@@ -19,6 +20,13 @@ const (
 
 	documentHashHeader         = "Document-Hash"
 	previousDocumentHashHeader = "Previous-Document-Hash"
+)
+
+var (
+	passthroughHeaders = []string{
+		strings.ToLower(tidutils.TransactionIDHeader),
+		"x-origin-system-id",
+	}
 )
 
 func Read(service db.RWService, table string) http.HandlerFunc {
@@ -66,6 +74,11 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 		}
 
 		doc := db.NewDocument(docBody)
+		for _, k := range passthroughHeaders {
+			if v := request.Header.Get(k); len(v) > 0 {
+				doc.Metadata.Set(k, v)
+			}
+		}
 		doc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
 		doc.Metadata.Set("publishRef", tidutils.GetTransactionIDFromRequest(request))
 

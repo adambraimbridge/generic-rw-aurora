@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Financial-Times/generic-rw-aurora/db"
+	tidutils "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/husobee/vestigo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -24,6 +25,8 @@ const (
 	docBody     = `{"foo":"bar"}`
 	docHash     = "34563ba43d923189d9e3aefd038683ac4f1f1eab72c2684926220d08"
 	prevDocHash = "bfd86d638f3ffda37b45ddf35fb29ee387f3bb8df5278db4b40e9e72"
+	testSystemId = "test-system-id"
+	testTxId    = "tid_test123"
 )
 
 type mockRW struct {
@@ -122,9 +125,40 @@ func TestReadError(t *testing.T) {
 	rw.AssertExpectations(t)
 }
 
+func matchDocument(expectedBody string, expectedMetadataValues map[string]string, expectedMetadataKeys map[string]struct{}) func(db.Document) bool {
+	return func(doc db.Document) bool {
+		if string(doc.Body) != expectedBody {
+			return false
+		}
+
+		for k, v := range doc.Metadata {
+			if _, found := expectedMetadataKeys[k]; found {
+				continue
+			}
+			expected, found := expectedMetadataValues[k]
+			if !found || expected != v {
+				return false
+			}
+		}
+
+		return true
+	}
+}
+
 func TestWriteCreate(t *testing.T) {
+	docMatcher := mock.MatchedBy(matchDocument(docBody,
+		map[string]string{
+			"publishRef": testTxId,
+			strings.ToLower(tidutils.TransactionIDHeader): testTxId,
+			"x-origin-system-id": testSystemId,
+		},
+		map[string]struct{}{
+			"timestamp": struct{}{},
+		},
+	))
+
 	rw := &mockRW{}
-	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, mock.AnythingOfType("db.Document"), map[string]string{"id": testKey}, prevDocHash).Return(true, docHash, nil)
+	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, docMatcher, map[string]string{"id": testKey}, prevDocHash).Return(true, docHash, nil)
 
 	router := vestigo.NewRouter()
 	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable))
@@ -132,6 +166,8 @@ func TestWriteCreate(t *testing.T) {
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(docBody))
 	req.Header.Set(previousDocumentHashHeader, prevDocHash)
+	req.Header.Set(tidutils.TransactionIDHeader, testTxId)
+	req.Header.Set("X-Origin-System-Id", testSystemId)
 
 	router.ServeHTTP(w, req)
 	actual := w.Result()

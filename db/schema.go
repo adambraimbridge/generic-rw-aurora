@@ -56,6 +56,19 @@ var (
 			alter table published_annotations drop column hash;
 		`,
 		},
+		{3, "initial-draft-content-table",
+			`create table draft_content (
+	    	uuid varchar(36) primary key,
+			last_modified varchar(32) not null,
+			draft_ref varchar(50) not null,
+            origin_system varchar(50) not null,
+            hash varchar(56) not null,
+			body mediumtext not null
+		);
+		`,
+			`drop table draft_content;
+		`,
+		},
 	}
 	requiredVersion int64
 )

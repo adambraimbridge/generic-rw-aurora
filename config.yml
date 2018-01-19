@@ -17,3 +17,13 @@ paths:
       body: "$"
     primaryKey: uuid
     hasConflictDetection: false
+  "/drafts/content/:id":
+    table: draft_content
+    columns:
+      uuid: ":id"
+      last_modified: "@.timestamp"
+      draft_ref: "@.x-request-id"
+      origin_system: "@.x-origin-system-id"
+      body: "$"
+    primaryKey: uuid
+    hasConflictDetection: false
