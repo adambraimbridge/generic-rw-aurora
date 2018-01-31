@@ -27,3 +27,6 @@ paths:
       body: "$"
     primaryKey: uuid
     hasConflictDetection: false
+    response:
+      headers:
+        "X-Origin-System-Id": origin_system

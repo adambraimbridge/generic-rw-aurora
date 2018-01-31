@@ -38,6 +38,9 @@ func Read(service db.RWService, table string) http.HandlerFunc {
 		writer.Header().Set("Content-Type", "application/json")
 		if err == nil {
 			writer.Header().Set(documentHashHeader, doc.Hash)
+			for k, v := range doc.Metadata {
+				writer.Header().Set(k, v)
+			}
 			writer.Write(doc.Body)
 		} else {
 			body := map[string]string{}

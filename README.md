@@ -41,13 +41,19 @@ Note that _every_ table used by this service requires a `hash` column, even if w
 
 The application requires a YAML configuration file to map between HTTP endpoints and tables in the Aurora database.
 
-The root object for the configuration is `paths`, which contains a mapping between URL paths and persistence stores. Paths may contain `:param-name` placeholders, which are recognised in the routing library. A path is mapped to a table, and a mapping of columns to expressions. The primary key column must also be specified.
+The root object for the configuration is `paths`, which contains a mapping between URL paths and persistence stores. Paths may contain `:param-name` placeholders, which are recognised in the routing library.
+
+A path is mapped to a table, a mapping of columns to expressions, and an optional mapping of columns to response headers. The primary key column must also be specified.
 
 The expressions for column values may contain the following syntax:
 - `:name` extracts a value from the incoming request (a path or query string parameter)
-- `@.name` extracts a value from the metadata for the incoming request. The names `timestamp` and `publishRef` are populated by the request time and the `X-Request-Id` HTTP header respectively.
+- `@.name` extracts a value from the metadata for the incoming request. The names `timestamp` and `publishRef` are populated by the request time and the `X-Request-Id` HTTP header respectively. Other HTTP headers are propagated into the metadata (with header names forced into lower case).
 - `$` extracts the entire request body
 - `$.name` extracts a JSON path from the request body
+
+The response body is the column whose value is the document itself (`$`).
+If write conflict detection is enabled, then the `Document-Hash` header is automatically included in the response.
+Other headers may be extracted from columns by specifying them in the response section. Quoting the names will preserve the case of the header name.
 
 For example:
 ```
@@ -58,9 +64,13 @@ paths:
       uuid: ":id"
       last_modified: "@.timestamp"
       publish_ref: "@.publishRef"
+      origin_system: "@.x-origin-system-id"
       body: "$"
     primaryKey: uuid
     hasConflictDetection: true
+    response:
+      headers:
+        "X-Origin-System-Id": origin_system
   "/published/content/:id/annotations":
     ...
 ```

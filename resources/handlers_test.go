@@ -25,6 +25,7 @@ const (
 	docBody     = `{"foo":"bar"}`
 	docHash     = "34563ba43d923189d9e3aefd038683ac4f1f1eab72c2684926220d08"
 	prevDocHash = "bfd86d638f3ffda37b45ddf35fb29ee387f3bb8df5278db4b40e9e72"
+	systemIdHeader = "X-Origin-System-Id"
 	testSystemId = "test-system-id"
 	testTxId    = "tid_test123"
 )
@@ -73,6 +74,7 @@ func TestRead(t *testing.T) {
 	body, _ := ioutil.ReadAll(actual.Body)
 	assert.Equal(t, docBody, string(body), "response body")
 	assert.Equal(t, docHash, actual.Header.Get(documentHashHeader))
+	assert.Empty(t, actual.Header.Get(systemIdHeader))
 
 	rw.AssertExpectations(t)
 }
@@ -97,6 +99,7 @@ func TestReadNotFound(t *testing.T) {
 	json.NewDecoder(actual.Body).Decode(&errorResponse)
 	assert.Equal(t, "No document found.", errorResponse["message"])
 	assert.Empty(t, actual.Header.Get(documentHashHeader))
+	assert.Empty(t, actual.Header.Get(systemIdHeader))
 
 	rw.AssertExpectations(t)
 }
@@ -121,6 +124,34 @@ func TestReadError(t *testing.T) {
 	json.NewDecoder(actual.Body).Decode(&errorResponse)
 	assert.Equal(t, msg, errorResponse["message"])
 	assert.Empty(t, actual.Header.Get(documentHashHeader))
+	assert.Empty(t, actual.Header.Get(systemIdHeader))
+
+	rw.AssertExpectations(t)
+}
+
+func TestReadWithResponseMetadata(t *testing.T) {
+
+	doc := db.NewDocument([]byte(docBody))
+	doc.Hash = docHash
+	doc.Metadata.Set(systemIdHeader, testSystemId)
+	rw := &mockRW{}
+	rw.On("Read", mock.AnythingOfType("*context.valueCtx"), testTable, testKey).Return(doc, nil)
+
+	router := vestigo.NewRouter()
+	router.Get(fmt.Sprintf("/%s/:id", testTable), Read(rw, testTable))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", fmt.Sprintf("/%s/%s", testTable, testKey), nil)
+
+	router.ServeHTTP(w, req)
+	actual := w.Result()
+
+	assert.Equal(t, http.StatusOK, actual.StatusCode, "HTTP status")
+	assert.Equal(t, "application/json", actual.Header.Get("Content-Type"), "content type")
+	body, _ := ioutil.ReadAll(actual.Body)
+	assert.Equal(t, docBody, string(body), "response body")
+	assert.Equal(t, docHash, actual.Header.Get(documentHashHeader), documentHashHeader)
+	assert.Equal(t, testSystemId, actual.Header.Get(systemIdHeader), systemIdHeader)
 
 	rw.AssertExpectations(t)
 }
@@ -150,7 +181,7 @@ func TestWriteCreate(t *testing.T) {
 		map[string]string{
 			"publishRef": testTxId,
 			strings.ToLower(tidutils.TransactionIDHeader): testTxId,
-			"x-origin-system-id": testSystemId,
+			strings.ToLower(systemIdHeader): testSystemId,
 		},
 		map[string]struct{}{
 			"timestamp": struct{}{},

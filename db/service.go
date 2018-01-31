@@ -48,10 +48,11 @@ type table struct {
 }
 
 type AuroraRWService struct {
-	conn           *sql.DB
-	schemaVersion  int64
-	schemaMismatch error
-	rwConfig       map[string]table
+	conn               *sql.DB
+	schemaVersion      int64
+	schemaMismatch     error
+	rwConfig           map[string]table
+	httpResponseConfig map[string]map[string]string
 }
 
 func (t *table) columnMapping() string {
@@ -65,6 +66,7 @@ func (t *table) columnMapping() string {
 
 func NewService(conn *sql.DB, migrate bool, rwConfig *config.Config) *AuroraRWService {
 	tables := make(map[string]table)
+	responseHeaders := make(map[string]map[string]string)
 	for _, tableConfig := range rwConfig.Paths {
 		t := table{
 			tableConfig.Table,
@@ -74,8 +76,12 @@ func NewService(conn *sql.DB, migrate bool, rwConfig *config.Config) *AuroraRWSe
 		}
 		tables[tableConfig.Table] = t
 		log.WithFields(log.Fields{"table": t.name, "primaryKey": t.primaryKey, "columnMapping": t.columnMapping()}).Info("mapping initialised")
+
+		if tableConfig.Response.Headers != nil {
+			responseHeaders[tableConfig.Table] = tableConfig.Response.Headers
+		}
 	}
-	service := &AuroraRWService{conn: conn, rwConfig: tables}
+	service := &AuroraRWService{conn: conn, rwConfig: tables, httpResponseConfig: responseHeaders}
 
 	if err := service.migrate(migrate); err != nil {
 		log.WithError(err).Error("failed to migrate db")
@@ -124,13 +130,24 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		return Document{}, fmt.Errorf("document column is not configured for table %s", tableName)
 	}
 
-	query := fmt.Sprintf("SELECT %s, %s FROM %s WHERE %s = ?", docColumn, hashColumn, table.name, table.primaryKey)
+	responseHeaderCols := []string{docColumn, hashColumn}
+	sqlToHeaderMap := make(map[string]string)
+	for k, v := range service.httpResponseConfig[tableName] {
+		responseHeaderCols = append(responseHeaderCols, v)
+		sqlToHeaderMap[v] = k
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", strings.Join(responseHeaderCols, ","), table.name, table.primaryKey)
+	readLog.Info(query)
 
 	row := service.conn.QueryRow(query, key)
 
-	var docBody string
-	var docHash string
-	err := row.Scan(&docBody, &docHash)
+	cols := len(responseHeaderCols)
+	vals := make([]interface{}, cols)
+	for i := range vals {
+		vals[i] = new(string)
+	}
+	err := row.Scan(vals...)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
@@ -139,10 +156,13 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		return Document{}, err
 	}
 
-	doc := Document{
-		Body: []byte(docBody),
-		Hash: docHash,
+	doc := NewDocumentWithHash([]byte(*vals[0].(*string)), *vals[1].(*string))
+
+	for i := 2; i < cols; i++ {
+		readLog.WithField("key", responseHeaderCols[i]).WithField("value", vals[i]).Info("set metadata")
+		doc.Metadata.Set(sqlToHeaderMap[responseHeaderCols[i]], *vals[i].(*string))
 	}
+
 	return doc, nil
 }
 

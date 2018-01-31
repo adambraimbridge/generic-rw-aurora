@@ -21,6 +21,7 @@ import (
 const (
 	testTable                      = "published_annotations"
 	testTableWithConflictDetection = "draft_annotations"
+	testTableWithMetadata          = "draft_content"
 	testKeyColumn                  = "uuid"
 	testDocColumn                  = "body"
 	lastModifiedColumn             = "last_modified"
@@ -105,6 +106,34 @@ func (s *ServiceRWTestSuite) TestReadNotFound() {
 	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
 	_, err := s.service.Read(testCtx, testTable, testKey)
 	assert.EqualError(s.T(), err, sql.ErrNoRows.Error())
+}
+
+func (s *ServiceRWTestSuite) TestReadWithMetadata() {
+	testKey := uuid.NewV4().String()
+
+	testTID := "tid_testread"
+	testSystem := "foo-bar-baz"
+	testHeader := "X-Origin-System-Id"
+
+	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
+	testDoc := NewDocument([]byte(testDocBody))
+	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set("publishRef", testTID)
+	testDoc.Metadata.Set(strings.ToLower(testHeader), testSystem)
+
+	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
+
+	params := map[string]string{"id": testKey}
+
+	status, expectedDocHash, err := s.service.Write(context.Background(), testTableWithMetadata, testKey, testDoc, params, "")
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), Created, status)
+
+	actual, err := s.service.Read(testCtx, testTableWithMetadata, testKey)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), testDoc.Body, actual.Body, "document read from store")
+	assert.Equal(s.T(), expectedDocHash, actual.Hash)
+	assert.Equal(s.T(), testSystem, actual.Metadata[testHeader])
 }
 
 func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflictDetection() {
