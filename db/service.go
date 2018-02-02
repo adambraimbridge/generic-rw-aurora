@@ -140,14 +140,47 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", strings.Join(responseHeaderCols, ","), table.name, table.primaryKey)
 	readLog.Info(query)
 
-	row := service.conn.QueryRow(query, key)
-
+	rows, err := service.conn.Query(query, key)
+	if err != nil {
+		readLog.WithError(err).Error("unable to read from database")
+		return Document{}, err
+	}
+	defer rows.Close()
+	
+	if !rows.Next() {
+		err = rows.Err()
+		if err != nil {
+			readLog.WithError(err).Error("unable to read from database")
+			return Document{}, err
+		}
+		return Document{}, sql.ErrNoRows
+	}
+	
+	colNames, err := rows.Columns()
+	if err != nil {
+		readLog.WithError(err).Error("unable to read from database")
+		return Document{}, err
+	}
+	
+	var colDoc, colHash int
+	for i := range colNames {
+		switch (colNames[i]) {
+		case docColumn:
+			colDoc = i
+		
+		case hashColumn:
+			colHash = i
+		
+		default:
+		}
+	}
+	
 	cols := len(responseHeaderCols)
 	vals := make([]interface{}, cols)
 	for i := range vals {
 		vals[i] = new(string)
 	}
-	err := row.Scan(vals...)
+	err = rows.Scan(vals...)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
@@ -156,11 +189,12 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		return Document{}, err
 	}
 
-	doc := NewDocumentWithHash([]byte(*vals[0].(*string)), *vals[1].(*string))
+	doc := NewDocumentWithHash([]byte(*vals[colDoc].(*string)), *vals[colHash].(*string))
 
-	for i := 2; i < cols; i++ {
-		readLog.WithField("key", responseHeaderCols[i]).WithField("value", vals[i]).Info("set metadata")
-		doc.Metadata.Set(sqlToHeaderMap[responseHeaderCols[i]], *vals[i].(*string))
+	for i := 0; i < cols; i++ {
+		if i != colDoc && i != colHash {
+			doc.Metadata.Set(sqlToHeaderMap[responseHeaderCols[i]], *vals[i].(*string))
+		}
 	}
 
 	return doc, nil

@@ -179,24 +179,22 @@ func matchDocument(expectedBody string, expectedMetadataValues map[string]string
 func TestWriteCreate(t *testing.T) {
 	docMatcher := mock.MatchedBy(matchDocument(docBody,
 		map[string]string{
-			"publishRef": testTxId,
 			strings.ToLower(tidutils.TransactionIDHeader): testTxId,
 			strings.ToLower(systemIdHeader): testSystemId,
 		},
 		map[string]struct{}{
-			"timestamp": struct{}{},
+			"_timestamp": struct{}{},
 		},
 	))
 
 	rw := &mockRW{}
-	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, docMatcher, map[string]string{"id": testKey}, prevDocHash).Return(true, docHash, nil)
+	rw.On("Write", mock.AnythingOfType("*context.valueCtx"), testTable, testKey, docMatcher, map[string]string{"id": testKey}, "").Return(true, docHash, nil)
 
 	router := vestigo.NewRouter()
 	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(docBody))
-	req.Header.Set(previousDocumentHashHeader, prevDocHash)
 	req.Header.Set(tidutils.TransactionIDHeader, testTxId)
 	req.Header.Set("X-Origin-System-Id", testSystemId)
 

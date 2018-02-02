@@ -28,14 +28,14 @@ var (
 	migrations = []migration{
 		{1, "initial-annotations-tables",
 			`create table draft_annotations (
-	    	uuid varchar(36) primary key,
+			uuid varchar(36) primary key,
 			last_modified varchar(32) not null,
 			publish_ref varchar(50) not null,
 			body mediumtext not null
 		);
 
 		create table published_annotations (
-	    	uuid varchar(36) primary key,
+			uuid varchar(36) primary key,
 			last_modified varchar(32) not null,
 			publish_ref varchar(50) not null,
 			body mediumtext not null
@@ -58,11 +58,11 @@ var (
 		},
 		{3, "initial-draft-content-table",
 			`create table draft_content (
-	    	uuid varchar(36) primary key,
+			uuid varchar(36) primary key,
 			last_modified varchar(32) not null,
 			draft_ref varchar(50) not null,
-            origin_system varchar(50) not null,
-            hash varchar(56) not null,
+			origin_system varchar(50) not null,
+			hash varchar(56) not null,
 			body mediumtext not null
 		);
 		`,

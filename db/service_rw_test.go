@@ -24,6 +24,7 @@ const (
 	testTableWithMetadata          = "draft_content"
 	testKeyColumn                  = "uuid"
 	testDocColumn                  = "body"
+	timestampMetadata = "_timestamp"
 	lastModifiedColumn             = "last_modified"
 	publishRefColumn               = "publish_ref"
 	testDocTemplate                = `{"foo":"%s"}`
@@ -83,8 +84,8 @@ func (s *ServiceRWTestSuite) TestRead() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-	testDoc.Metadata.Set("publishRef", testTID)
+	testDoc.Metadata.Set(timestampMetadata, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID)
 
 	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
 
@@ -117,8 +118,8 @@ func (s *ServiceRWTestSuite) TestReadWithMetadata() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-	testDoc.Metadata.Set("publishRef", testTID)
+	testDoc.Metadata.Set(timestampMetadata, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID)
 	testDoc.Metadata.Set(strings.ToLower(testHeader), testSystem)
 
 	testCtx := tid.TransactionAwareContext(context.Background(), testTID)
@@ -143,8 +144,8 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflictDetection() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testLastModified)
-	testDoc.Metadata.Set("publishRef", testTID)
+	testDoc.Metadata.Set(timestampMetadata, testLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID)
 
 	params := map[string]string{"id": testKey}
 
@@ -173,8 +174,8 @@ func (s *ServiceRWTestSuite) TestWriteUpdateWithoutConflictDetection() {
 	testCtx := tid.TransactionAwareContext(context.Background(), testCreatePublishRef)
 
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testCreateLastModified)
-	testDoc.Metadata.Set("publishRef", testCreatePublishRef)
+	testDoc.Metadata.Set(timestampMetadata, testCreateLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testCreatePublishRef)
 
 	params := map[string]string{"id": testKey}
 
@@ -186,8 +187,8 @@ func (s *ServiceRWTestSuite) TestWriteUpdateWithoutConflictDetection() {
 	testUpdatePublishRef := "tid_testupdate_2"
 
 	testDoc = NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testUpdateLastModified)
-	testDoc.Metadata.Set("publishRef", testUpdatePublishRef)
+	testDoc.Metadata.Set(timestampMetadata, testUpdateLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testUpdatePublishRef)
 
 	testCtx = tid.TransactionAwareContext(context.Background(), testCreatePublishRef)
 
@@ -213,8 +214,8 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflict() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testLastModified)
-	testDoc.Metadata.Set("publishRef", testTID)
+	testDoc.Metadata.Set(timestampMetadata, testLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID)
 
 	params := map[string]string{"id": testKey}
 
@@ -245,8 +246,8 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testLastModified)
-	testDoc.Metadata.Set("publishRef", testTID1)
+	testDoc.Metadata.Set(timestampMetadata, testLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID1)
 
 	params := map[string]string{"id": testKey}
 
@@ -260,8 +261,8 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
 	testDocBody = fmt.Sprintf(testDocTemplate, testLastModified)
 
 	testDoc = NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testLastModified2)
-	testDoc.Metadata.Set("publishRef", testTID2)
+	testDoc.Metadata.Set(timestampMetadata, testLastModified2)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID2)
 
 	testCtx = tid.TransactionAwareContext(context.Background(), testTID2)
 
@@ -294,8 +295,8 @@ func (s *ServiceRWTestSuite) TestUpdateWithoutConflict() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-	testDoc.Metadata.Set("publishRef", testTID1)
+	testDoc.Metadata.Set(timestampMetadata, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID1)
 
 	params := map[string]string{"id": testKey}
 
@@ -308,8 +309,8 @@ func (s *ServiceRWTestSuite) TestUpdateWithoutConflict() {
 	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	testDocBody = fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc = NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testLastModified)
-	testDoc.Metadata.Set("publishRef", testTID2)
+	testDoc.Metadata.Set(timestampMetadata, testLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID2)
 
 	status, docHash, err := s.service.Write(testCtx, testTableWithConflictDetection, testKey, testDoc, params, previousDocHash)
 	assert.NoError(s.T(), err)
@@ -336,8 +337,8 @@ func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
 
 	testDocBody := fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc := NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-	testDoc.Metadata.Set("publishRef", testTID1)
+	testDoc.Metadata.Set(timestampMetadata, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID1)
 
 	params := map[string]string{"id": testKey}
 
@@ -350,8 +351,8 @@ func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
 	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	testDocBody = fmt.Sprintf(testDocTemplate, time.Now().String())
 	testDoc = NewDocument([]byte(testDocBody))
-	testDoc.Metadata.Set("timestamp", testLastModified)
-	testDoc.Metadata.Set("publishRef", testTID2)
+	testDoc.Metadata.Set(timestampMetadata, testLastModified)
+	testDoc.Metadata.Set(strings.ToLower(tid.TransactionIDHeader), testTID2)
 
 	aVeryOldHash := "01234567890123456789012345678901234567890123456789012345"
 

@@ -1,14 +1,13 @@
 package resources
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
-
-	"context"
 
 	"github.com/Financial-Times/generic-rw-aurora/db"
 	tidutils "github.com/Financial-Times/transactionid-utils-go"
@@ -20,13 +19,6 @@ const (
 
 	documentHashHeader         = "Document-Hash"
 	previousDocumentHashHeader = "Previous-Document-Hash"
-)
-
-var (
-	passthroughHeaders = []string{
-		strings.ToLower(tidutils.TransactionIDHeader),
-		"x-origin-system-id",
-	}
 )
 
 func Read(service db.RWService, table string) http.HandlerFunc {
@@ -77,13 +69,12 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 		}
 
 		doc := db.NewDocument(docBody)
-		for _, k := range passthroughHeaders {
-			if v := request.Header.Get(k); len(v) > 0 {
-				doc.Metadata.Set(k, v)
-			}
+		for k, _ := range request.Header {
+			v := request.Header.Get(k)
+			doc.Metadata.Set(strings.ToLower(k), v)
 		}
-		doc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-		doc.Metadata.Set("publishRef", tidutils.GetTransactionIDFromRequest(request))
+		
+		doc.Metadata.Set("_timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
 
 		previousDocHash := request.Header.Get(previousDocumentHashHeader)
 

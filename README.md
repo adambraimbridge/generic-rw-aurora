@@ -47,7 +47,7 @@ A path is mapped to a table, a mapping of columns to expressions, and an optiona
 
 The expressions for column values may contain the following syntax:
 - `:name` extracts a value from the incoming request (a path or query string parameter)
-- `@.name` extracts a value from the metadata for the incoming request. The names `timestamp` and `publishRef` are populated by the request time and the `X-Request-Id` HTTP header respectively. Other HTTP headers are propagated into the metadata (with header names forced into lower case).
+- `@.name` extracts a value from the metadata for the incoming request. The name `_timestamp` is populated by the request time and all HTTP headers are propagated into the metadata (with header names forced into lower case).
 - `$` extracts the entire request body
 - `$.name` extracts a JSON path from the request body
 

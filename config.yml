@@ -3,8 +3,8 @@ paths:
     table: draft_annotations
     columns:
       uuid: ":id"
-      last_modified: "@.timestamp"
-      publish_ref: "@.publishRef"
+      last_modified: "@._timestamp"
+      publish_ref: "@.x-request-id"
       body: "$"
     primaryKey: uuid
     hasConflictDetection: true
@@ -12,8 +12,8 @@ paths:
     table: published_annotations
     columns:
       uuid: ":id"
-      last_modified: "@.timestamp"
-      publish_ref: "@.publishRef"
+      last_modified: "@._timestamp"
+      publish_ref: "@.x-request-id"
       body: "$"
     primaryKey: uuid
     hasConflictDetection: false
@@ -21,7 +21,7 @@ paths:
     table: draft_content
     columns:
       uuid: ":id"
-      last_modified: "@.timestamp"
+      last_modified: "@._timestamp"
       draft_ref: "@.x-request-id"
       origin_system: "@.x-origin-system-id"
       body: "$"
