@@ -48,10 +48,11 @@ type table struct {
 }
 
 type AuroraRWService struct {
-	conn           *sql.DB
-	schemaVersion  int64
-	schemaMismatch error
-	rwConfig       map[string]table
+	conn               *sql.DB
+	schemaVersion      int64
+	schemaMismatch     error
+	rwConfig           map[string]table
+	httpResponseConfig map[string]map[string]string
 }
 
 func (t *table) columnMapping() string {
@@ -65,6 +66,7 @@ func (t *table) columnMapping() string {
 
 func NewService(conn *sql.DB, migrate bool, rwConfig *config.Config) *AuroraRWService {
 	tables := make(map[string]table)
+	responseHeaders := make(map[string]map[string]string)
 	for _, tableConfig := range rwConfig.Paths {
 		t := table{
 			tableConfig.Table,
@@ -74,8 +76,12 @@ func NewService(conn *sql.DB, migrate bool, rwConfig *config.Config) *AuroraRWSe
 		}
 		tables[tableConfig.Table] = t
 		log.WithFields(log.Fields{"table": t.name, "primaryKey": t.primaryKey, "columnMapping": t.columnMapping()}).Info("mapping initialised")
+
+		if tableConfig.Response.Headers != nil {
+			responseHeaders[tableConfig.Table] = tableConfig.Response.Headers
+		}
 	}
-	service := &AuroraRWService{conn: conn, rwConfig: tables}
+	service := &AuroraRWService{conn: conn, rwConfig: tables, httpResponseConfig: responseHeaders}
 
 	if err := service.migrate(migrate); err != nil {
 		log.WithError(err).Error("failed to migrate db")
@@ -124,13 +130,57 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		return Document{}, fmt.Errorf("document column is not configured for table %s", tableName)
 	}
 
-	query := fmt.Sprintf("SELECT %s, %s FROM %s WHERE %s = ?", docColumn, hashColumn, table.name, table.primaryKey)
+	responseHeaderCols := []string{docColumn, hashColumn}
+	sqlToHeaderMap := make(map[string]string)
+	for k, v := range service.httpResponseConfig[tableName] {
+		responseHeaderCols = append(responseHeaderCols, v)
+		sqlToHeaderMap[v] = k
+	}
 
-	row := service.conn.QueryRow(query, key)
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", strings.Join(responseHeaderCols, ","), table.name, table.primaryKey)
+	readLog.Info(query)
 
-	var docBody string
-	var docHash string
-	err := row.Scan(&docBody, &docHash)
+	rows, err := service.conn.Query(query, key)
+	if err != nil {
+		readLog.WithError(err).Error("unable to read from database")
+		return Document{}, err
+	}
+	defer rows.Close()
+	
+	if !rows.Next() {
+		err = rows.Err()
+		if err != nil {
+			readLog.WithError(err).Error("unable to read from database")
+			return Document{}, err
+		}
+		return Document{}, sql.ErrNoRows
+	}
+	
+	colNames, err := rows.Columns()
+	if err != nil {
+		readLog.WithError(err).Error("unable to read from database")
+		return Document{}, err
+	}
+	
+	var colDoc, colHash int
+	for i := range colNames {
+		switch (colNames[i]) {
+		case docColumn:
+			colDoc = i
+		
+		case hashColumn:
+			colHash = i
+		
+		default:
+		}
+	}
+	
+	cols := len(responseHeaderCols)
+	vals := make([]interface{}, cols)
+	for i := range vals {
+		vals[i] = new(string)
+	}
+	err = rows.Scan(vals...)
 
 	if err != nil {
 		if err != sql.ErrNoRows {
@@ -139,10 +189,14 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		return Document{}, err
 	}
 
-	doc := Document{
-		Body: []byte(docBody),
-		Hash: docHash,
+	doc := NewDocumentWithHash([]byte(*vals[colDoc].(*string)), *vals[colHash].(*string))
+
+	for i := 0; i < cols; i++ {
+		if i != colDoc && i != colHash {
+			doc.Metadata.Set(sqlToHeaderMap[responseHeaderCols[i]], *vals[i].(*string))
+		}
 	}
+
 	return doc, nil
 }
 

@@ -1,13 +1,13 @@
 package resources
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
-
-	"context"
 
 	"github.com/Financial-Times/generic-rw-aurora/db"
 	tidutils "github.com/Financial-Times/transactionid-utils-go"
@@ -30,6 +30,9 @@ func Read(service db.RWService, table string) http.HandlerFunc {
 		writer.Header().Set("Content-Type", "application/json")
 		if err == nil {
 			writer.Header().Set(documentHashHeader, doc.Hash)
+			for k, v := range doc.Metadata {
+				writer.Header().Set(k, v)
+			}
 			writer.Write(doc.Body)
 		} else {
 			body := map[string]string{}
@@ -66,8 +69,12 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 		}
 
 		doc := db.NewDocument(docBody)
-		doc.Metadata.Set("timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-		doc.Metadata.Set("publishRef", tidutils.GetTransactionIDFromRequest(request))
+		for k, _ := range request.Header {
+			v := request.Header.Get(k)
+			doc.Metadata.Set(strings.ToLower(k), v)
+		}
+		
+		doc.Metadata.Set("_timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
 
 		previousDocHash := request.Header.Get(previousDocumentHashHeader)
 

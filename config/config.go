@@ -15,6 +15,11 @@ type Mapping struct {
 	Columns              map[string]string `yaml:"columns"`
 	PrimaryKey           string            `yaml:"primaryKey"`
 	HasConflictDetection bool              `yaml:"hasConflictDetection"`
+	Response             ResponseMapping   `yaml:"response"`
+}
+
+type ResponseMapping struct {
+	Headers map[string]string `yaml:"headers"`
 }
 
 func ReadConfig(yml string) (*Config, error) {
