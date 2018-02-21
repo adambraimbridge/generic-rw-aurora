@@ -30,3 +30,5 @@ paths:
     response:
       headers:
         "X-Origin-System-Id": origin_system
+        "Write-Request-Id": draft_ref
+        "Last-Modified-RFC3339": last_modified
