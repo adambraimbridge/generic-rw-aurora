@@ -146,7 +146,7 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		return Document{}, err
 	}
 	defer rows.Close()
-	
+
 	if !rows.Next() {
 		err = rows.Err()
 		if err != nil {
@@ -155,26 +155,26 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 		}
 		return Document{}, sql.ErrNoRows
 	}
-	
+
 	colNames, err := rows.Columns()
 	if err != nil {
 		readLog.WithError(err).Error("unable to read from database")
 		return Document{}, err
 	}
-	
+
 	var colDoc, colHash int
 	for i := range colNames {
-		switch (colNames[i]) {
+		switch colNames[i] {
 		case docColumn:
 			colDoc = i
-		
+
 		case hashColumn:
 			colHash = i
-		
+
 		default:
 		}
 	}
-	
+
 	cols := len(responseHeaderCols)
 	vals := make([]interface{}, cols)
 	for i := range vals {

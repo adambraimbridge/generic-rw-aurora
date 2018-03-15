@@ -15,6 +15,7 @@ import (
 	"github.com/jawher/mow.cli"
 	"github.com/rcrowley/go-metrics"
 	log "github.com/sirupsen/logrus"
+	"time"
 )
 
 const (
@@ -37,6 +38,12 @@ func main() {
 		Value:  systemCode,
 		Desc:   "Application name",
 		EnvVar: "APP_NAME",
+	})
+	appTimeout := app.Int(cli.IntOpt{
+		Name:   "app-timeout",
+		Value:  8000,
+		Desc:   "Application endpoints timeout",
+		EnvVar: "APP_TIMEOUT",
 	})
 
 	port := app.String(cli.StringOpt{
@@ -95,7 +102,7 @@ func main() {
 
 		healthService := health.NewHealthService(*appSystemCode, *appName, appDescription, rw)
 
-		serveEndpoints(*port, apiYml, rwConfig, rw, healthService)
+		serveEndpoints(*port, apiYml, rwConfig, rw, healthService, time.Duration(*appTimeout)*time.Millisecond)
 	}
 
 	err := app.Run(os.Args)
@@ -104,7 +111,7 @@ func main() {
 	}
 }
 
-func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWService, healthService *health.HealthService) {
+func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWService, healthService *health.HealthService, timeout time.Duration) {
 	r := vestigo.NewRouter()
 
 	var monitoringRouter http.Handler = r
@@ -116,8 +123,8 @@ func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWServ
 	r.Get(status.BuildInfoPath, status.BuildInfoHandler)
 
 	for path, cfg := range rw.Paths {
-		r.Get(path, resources.Read(db, cfg.Table))
-		r.Put(path, resources.Write(db, cfg.Table))
+		r.Get(path, resources.Read(db, cfg.Table, timeout))
+		r.Put(path, resources.Write(db, cfg.Table, timeout))
 		log.WithField("path", path).WithField("table", cfg.Table).Info("added r/w endpoint")
 	}
 

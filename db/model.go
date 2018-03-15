@@ -15,7 +15,7 @@ func NewDocument(body []byte) Document {
 func NewDocumentWithHash(body []byte, hash string) Document {
 	return Document{
 		Body:     body,
-		Hash: hash,
+		Hash:     hash,
 		Metadata: DocMetadata{}}
 }
 

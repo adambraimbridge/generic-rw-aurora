@@ -21,20 +21,44 @@ const (
 	previousDocumentHashHeader = "Previous-Document-Hash"
 )
 
-func Read(service db.RWService, table string) http.HandlerFunc {
+func Read(service db.RWService, table string, timeout time.Duration) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		txid := tidutils.GetTransactionIDFromRequest(request)
-		ctx := tidutils.TransactionAwareContext(context.Background(), txid)
-		id := vestigo.Param(request, "id")
-		doc, err := service.Read(ctx, table, id)
+
+		ctx, cancelFunc := context.WithTimeout(tidutils.TransactionAwareContext(context.Background(), txid), timeout)
+		defer cancelFunc()
+
+		responseCh := make(chan db.Document)
+		errorCh := make(chan error)
+
+		go func(responseCh chan db.Document, errorCh chan error) {
+			id := vestigo.Param(request, "id")
+			doc, err := service.Read(ctx, table, id)
+
+			if err != nil {
+				errorCh <- err
+				return
+			}
+
+			responseCh <- doc
+
+		}(responseCh, errorCh)
+
 		writer.Header().Set("Content-Type", "application/json")
-		if err == nil {
+
+		select {
+		case <-ctx.Done():
+			writer.WriteHeader(http.StatusGatewayTimeout)
+			json.NewEncoder(writer).Encode(map[string]string{"message": "document read request timed out"})
+
+		case doc := <-responseCh:
 			writer.Header().Set(documentHashHeader, doc.Hash)
 			for k, v := range doc.Metadata {
 				writer.Header().Set(k, v)
 			}
 			writer.Write(doc.Body)
-		} else {
+
+		case err := <-errorCh:
 			body := map[string]string{}
 			if err == sql.ErrNoRows {
 				writer.WriteHeader(http.StatusNotFound)
@@ -48,10 +72,9 @@ func Read(service db.RWService, table string) http.HandlerFunc {
 	}
 }
 
-func Write(service db.RWService, table string) http.HandlerFunc {
+func Write(service db.RWService, table string, timeout time.Duration) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
-		txid := tidutils.GetTransactionIDFromRequest(request)
-		ctx := tidutils.TransactionAwareContext(context.Background(), txid)
+
 		params := make(map[string]string)
 		for _, p := range vestigo.ParamNames(request) {
 			params[p[1:]] = vestigo.Param(request, p[1:])
@@ -68,29 +91,57 @@ func Write(service db.RWService, table string) http.HandlerFunc {
 			return
 		}
 
-		doc := db.NewDocument(docBody)
-		for k, _ := range request.Header {
-			v := request.Header.Get(k)
-			doc.Metadata.Set(strings.ToLower(k), v)
-		}
-		
-		doc.Metadata.Set("_timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+		// start the endpoint timer after we consume the http body
+		// being fair to slow writers (ex: slow/bad network connection over vpn).
+		txid := tidutils.GetTransactionIDFromRequest(request)
+		ctx, cancelFunc := context.WithTimeout(tidutils.TransactionAwareContext(context.Background(), txid), timeout)
+		defer cancelFunc()
 
-		previousDocHash := request.Header.Get(previousDocumentHashHeader)
+		responseCh := make(chan statusHashTuple)
+		errorCh := make(chan error)
 
-		status, hash, err := service.Write(ctx, table, id, doc, params, previousDocHash)
+		go func(responseCh chan statusHashTuple, errorCh chan error) {
+			doc := db.NewDocument(docBody)
+			for k := range request.Header {
+				v := request.Header.Get(k)
+				doc.Metadata.Set(strings.ToLower(k), v)
+			}
 
-		if err == nil {
-			writer.Header().Set(documentHashHeader, hash)
-			if status == db.Created {
+			doc.Metadata.Set("_timestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+
+			previousDocHash := request.Header.Get(previousDocumentHashHeader)
+
+			status, hash, err := service.Write(ctx, table, id, doc, params, previousDocHash)
+
+			if err != nil {
+				errorCh <- err
+				return
+			}
+			responseCh <- statusHashTuple{status, hash}
+		}(responseCh, errorCh)
+
+		select {
+		case <- ctx.Done():
+			writer.WriteHeader(http.StatusGatewayTimeout)
+			json.NewEncoder(writer).Encode(map[string]string{"message": "document write request timed out"})
+
+		case err := <-errorCh:
+			writer.WriteHeader(http.StatusInternalServerError)
+			body := map[string]string{"message": err.Error()}
+			json.NewEncoder(writer).Encode(body)
+
+		case statusHashTuple := <-responseCh:
+			writer.Header().Set(documentHashHeader, statusHashTuple.hash)
+			if statusHashTuple.status == db.Created {
 				writer.WriteHeader(http.StatusCreated)
 			} else {
 				writer.WriteHeader(http.StatusOK)
 			}
-		} else {
-			writer.WriteHeader(http.StatusInternalServerError)
-			body := map[string]string{"message": err.Error()}
-			json.NewEncoder(writer).Encode(body)
 		}
 	}
+}
+
+type statusHashTuple struct {
+	status bool
+	hash   string
 }
