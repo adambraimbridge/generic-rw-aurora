@@ -121,7 +121,7 @@ func Write(service db.RWService, table string, timeout time.Duration) http.Handl
 		}(responseCh, errorCh)
 
 		select {
-		case <- ctx.Done():
+		case <-ctx.Done():
 			writer.WriteHeader(http.StatusGatewayTimeout)
 			json.NewEncoder(writer).Encode(map[string]string{"message": "document write request timed out"})
 

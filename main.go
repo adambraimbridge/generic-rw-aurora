@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"time"
 
 	api "github.com/Financial-Times/api-endpoint"
 	"github.com/Financial-Times/generic-rw-aurora/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/jawher/mow.cli"
 	"github.com/rcrowley/go-metrics"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 const (
@@ -42,7 +42,7 @@ func main() {
 	appTimeout := app.Int(cli.IntOpt{
 		Name:   "app-timeout",
 		Value:  8000,
-		Desc:   "Application endpoints timeout",
+		Desc:   "Application endpoints timeout in milliseconds",
 		EnvVar: "APP_TIMEOUT",
 	})
 

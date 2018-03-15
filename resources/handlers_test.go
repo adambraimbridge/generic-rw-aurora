@@ -11,13 +11,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Financial-Times/generic-rw-aurora/db"
 	tidutils "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/husobee/vestigo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"time"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	testKey            = "1234"
 	docBody            = `{"foo":"bar"}`
 	readTimeoutBody    = "{\"message\":\"document read request timed out\"}\n"
-	writeTimeoutBody    = "{\"message\":\"document write request timed out\"}\n"
+	writeTimeoutBody   = "{\"message\":\"document write request timed out\"}\n"
 	docHash            = "34563ba43d923189d9e3aefd038683ac4f1f1eab72c2684926220d08"
 	prevDocHash        = "bfd86d638f3ffda37b45ddf35fb29ee387f3bb8df5278db4b40e9e72"
 	systemIdHeader     = "X-Origin-System-Id"
@@ -165,12 +165,12 @@ func TestReadTimeout(t *testing.T) {
 	doc.Hash = docHash
 
 	rw := &mockRW{}
-	rw.On("Read", mock.AnythingOfType("*context.timerCtx"), testTable, testKey).Run(func (args mock.Arguments) {
+	rw.On("Read", mock.AnythingOfType("*context.timerCtx"), testTable, testKey).Run(func(args mock.Arguments) {
 		time.Sleep(500 * time.Millisecond)
 	}).Return(doc, nil)
 
 	router := vestigo.NewRouter()
-	router.Get(fmt.Sprintf("/%s/:id", testTable), Read(rw, testTable, 200 * time.Millisecond))
+	router.Get(fmt.Sprintf("/%s/:id", testTable), Read(rw, testTable, 200*time.Millisecond))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", fmt.Sprintf("/%s/%s", testTable, testKey), nil)
@@ -324,12 +324,12 @@ func TestWriteTimeout(t *testing.T) {
 	))
 
 	rw := &mockRW{}
-	rw.On("Write", mock.AnythingOfType("*context.timerCtx"), testTable, testKey, docMatcher, map[string]string{"id": testKey}, "").Run(func (args mock.Arguments) {
-		time.Sleep( 500 * time.Millisecond)
+	rw.On("Write", mock.AnythingOfType("*context.timerCtx"), testTable, testKey, docMatcher, map[string]string{"id": testKey}, "").Run(func(args mock.Arguments) {
+		time.Sleep(500 * time.Millisecond)
 	}).Return(true, docHash, nil)
 
 	router := vestigo.NewRouter()
-	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable, 200 * time.Millisecond))
+	router.Put(fmt.Sprintf("/%s/:id", testTable), Write(rw, testTable, 200*time.Millisecond))
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("PUT", fmt.Sprintf("/%s/%s", testTable, testKey), strings.NewReader(docBody))
@@ -346,4 +346,3 @@ func TestWriteTimeout(t *testing.T) {
 
 	rw.AssertExpectations(t)
 }
-
