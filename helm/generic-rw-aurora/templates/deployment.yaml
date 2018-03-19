@@ -32,7 +32,12 @@ spec:
             configMapKeyRef:
               name: global-config
               key: aurora.perform-schema-migrations
-        ports: 
+        - name: APP_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: timeout-config
+              key: generic-rw-aurora-timeout
+        ports:
         - containerPort: 8080 
         livenessProbe: 
           tcpSocket: 

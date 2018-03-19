@@ -24,7 +24,7 @@ const (
 	testTableWithMetadata          = "draft_content"
 	testKeyColumn                  = "uuid"
 	testDocColumn                  = "body"
-	timestampMetadata = "_timestamp"
+	timestampMetadata              = "_timestamp"
 	lastModifiedColumn             = "last_modified"
 	publishRefColumn               = "publish_ref"
 	testDocTemplate                = `{"foo":"%s"}`

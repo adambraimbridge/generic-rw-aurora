@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"time"
 
 	api "github.com/Financial-Times/api-endpoint"
 	"github.com/Financial-Times/generic-rw-aurora/config"
@@ -37,6 +38,12 @@ func main() {
 		Value:  systemCode,
 		Desc:   "Application name",
 		EnvVar: "APP_NAME",
+	})
+	appTimeout := app.String(cli.StringOpt{
+		Name:   "app-timeout",
+		Value:  "8s",
+		Desc:   "Application endpoints timeout in milliseconds",
+		EnvVar: "APP_TIMEOUT",
 	})
 
 	port := app.String(cli.StringOpt{
@@ -95,7 +102,13 @@ func main() {
 
 		healthService := health.NewHealthService(*appSystemCode, *appName, appDescription, rw)
 
-		serveEndpoints(*port, apiYml, rwConfig, rw, healthService)
+		timeout, err := time.ParseDuration(*appTimeout)
+
+		if err != nil {
+			log.WithError(err).Error("unable to parse timeout")
+			return
+		}
+		serveEndpoints(*port, apiYml, rwConfig, rw, healthService, timeout)
 	}
 
 	err := app.Run(os.Args)
@@ -104,7 +117,7 @@ func main() {
 	}
 }
 
-func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWService, healthService *health.HealthService) {
+func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWService, healthService *health.HealthService, timeout time.Duration) {
 	r := vestigo.NewRouter()
 
 	var monitoringRouter http.Handler = r
@@ -116,8 +129,8 @@ func serveEndpoints(port string, apiYml *string, rw *config.Config, db db.RWServ
 	r.Get(status.BuildInfoPath, status.BuildInfoHandler)
 
 	for path, cfg := range rw.Paths {
-		r.Get(path, resources.Read(db, cfg.Table))
-		r.Put(path, resources.Write(db, cfg.Table))
+		r.Get(path, resources.Read(db, cfg.Table, timeout))
+		r.Put(path, resources.Write(db, cfg.Table, timeout))
 		log.WithField("path", path).WithField("table", cfg.Table).Info("added r/w endpoint")
 	}
 
