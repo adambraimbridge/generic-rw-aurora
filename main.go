@@ -39,9 +39,9 @@ func main() {
 		Desc:   "Application name",
 		EnvVar: "APP_NAME",
 	})
-	appTimeout := app.Int(cli.IntOpt{
+	appTimeout := app.String(cli.StringOpt{
 		Name:   "app-timeout",
-		Value:  8000,
+		Value:  "8s",
 		Desc:   "Application endpoints timeout in milliseconds",
 		EnvVar: "APP_TIMEOUT",
 	})
@@ -102,7 +102,13 @@ func main() {
 
 		healthService := health.NewHealthService(*appSystemCode, *appName, appDescription, rw)
 
-		serveEndpoints(*port, apiYml, rwConfig, rw, healthService, time.Duration(*appTimeout)*time.Millisecond)
+		timeout, err := time.ParseDuration(*appTimeout)
+
+		if err != nil {
+			log.WithError(err).Error("unable to parse timeout")
+			return
+		}
+		serveEndpoints(*port, apiYml, rwConfig, rw, healthService, timeout)
 	}
 
 	err := app.Run(os.Args)
