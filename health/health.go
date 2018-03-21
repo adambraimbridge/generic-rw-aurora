@@ -36,13 +36,22 @@ func (service *HealthService) HealthCheckHandleFunc() func(w http.ResponseWriter
 
 // GTG returns the current gtg status
 func (service *HealthService) GTG() gtg.Status {
-	msg, err := service.dbPingCheck().Checker()
-	if err != nil {
-		log.WithError(err).Infof("not connected to database: %s", msg)
-		return gtg.Status{GoodToGo: false, Message: "Not connected to database"}
+	var checkers []gtg.StatusChecker
+
+	dbPingCheck := func() gtg.Status {
+		msg, err := service.dbPingCheck().Checker()
+		if err != nil {
+			log.WithError(err).Infof("not connected to database: %s", msg)
+			return gtg.Status{GoodToGo: false, Message: "Not connected to database"}
+		}
+
+		return gtg.Status{GoodToGo: true, Message: "OK"}
 	}
 
-	return gtg.Status{GoodToGo: true, Message: "OK"}
+	checkers = append(checkers, dbPingCheck)
+
+	// switch to 'gtg.FailFastParallelCheck' if there are multiple checkers in the future.
+	return gtg.FailFastSequentialChecker(checkers)()
 }
 
 func (service *HealthService) dbPingCheck() fthealth.Check {
