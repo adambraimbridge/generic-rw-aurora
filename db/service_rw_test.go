@@ -63,7 +63,7 @@ func (s *ServiceRWTestSuite) SetupSuite() {
 	j := strings.Index(s.dbAdminUrl, "/")
 	dbUrl := fmt.Sprintf("%s:%s@%s/%s", pacUser, pacPassword, s.dbAdminUrl[i+1:j], pacSchema)
 
-	conn, err := Connect(dbUrl)
+	conn, err := Connect(dbUrl, 5)
 	require.NoError(s.T(), err)
 
 	cfg, err := config.ReadConfig("../config.yml")

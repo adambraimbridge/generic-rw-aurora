@@ -21,6 +21,8 @@ import (
 const (
 	systemCode     = "generic-rw-aurora"
 	appDescription = "Generic R/W for Aurora"
+	// db.t2.small allows a maximum of 45 connections, but there are likely 2 instances of this service
+	maxConnections = 20
 )
 
 func main() {
@@ -93,7 +95,7 @@ func main() {
 			log.WithError(err).Fatal("unable to read r/w YAML configuration")
 		}
 
-		conn, err := db.Connect(*dbURL)
+		conn, err := db.Connect(*dbURL, maxConnections)
 		if err != nil {
 			log.WithError(err).Error("unable to connect to database")
 		}

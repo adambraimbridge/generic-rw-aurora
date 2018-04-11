@@ -51,7 +51,7 @@ func (s *ServiceSchemaTestSuite) SetupTest() {
 	j := strings.Index(s.dbAdminUrl, "/")
 	s.dbUrl = fmt.Sprintf("%s:%s@%s/%s", pacUser, pacPassword, s.dbAdminUrl[i+1:j], pacSchema)
 
-	conn, err = Connect(s.dbUrl)
+	conn, err = Connect(s.dbUrl, 5)
 	require.NoError(s.T(), err)
 	s.dbConn = conn
 }
