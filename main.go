@@ -21,8 +21,8 @@ import (
 const (
 	systemCode     = "generic-rw-aurora"
 	appDescription = "Generic R/W for Aurora"
-	// db.t2.small allows a maximum of 45 connections, but there are likely 2 instances of this service
-	maxConnections = 20
+	// db.t2.small allows a maximum of 45 connections, but there are likely 2 instances of this service in each of 2 regions
+	maxConnections = 10
 )
 
 func main() {
