@@ -10,6 +10,8 @@ jobs:
           CIRCLE_COVERAGE_REPORT: /tmp/coverage-results
           DB_TEST_URL: root:password@/pac
       - image: mysql:5.6
+        # db.t2.small allows 45 connections
+        command: [mysqld, --max-connections=45]
         environment:
           MYSQL_ROOT_PASSWORD: password
           MYSQL_DATABASE: pac

@@ -45,35 +45,37 @@ func TestServiceRWTestSuite(t *testing.T) {
 }
 
 func (s *ServiceRWTestSuite) SetupSuite() {
-	conn, err := sql.Open("mysql", s.dbAdminUrl)
+	adminConn, err := sql.Open("mysql", s.dbAdminUrl)
 	require.NoError(s.T(), err)
-	defer conn.Close()
+	defer adminConn.Close()
 
 	pacSchema := "pac_test"
 	pacUser := "pac_test_user"
 
-	err = cleanDatabase(conn, pacUser, pacSchema)
+	err = cleanDatabase(adminConn, pacUser, pacSchema)
 	require.NoError(s.T(), err)
 
 	pacPassword := uuid.NewV4().String()
-	err = createDatabase(conn, pacUser, pacPassword, pacSchema)
+	err = createDatabase(adminConn, pacUser, pacPassword, pacSchema)
 	require.NoError(s.T(), err)
 
 	i := strings.Index(s.dbAdminUrl, "@")
 	j := strings.Index(s.dbAdminUrl, "/")
 	dbUrl := fmt.Sprintf("%s:%s@%s/%s", pacUser, pacPassword, s.dbAdminUrl[i+1:j], pacSchema)
 
-	conn, err = Connect(dbUrl)
+	conn, err := Connect(dbUrl, 5)
 	require.NoError(s.T(), err)
 
 	cfg, err := config.ReadConfig("../config.yml")
 	require.NoError(s.T(), err)
 
 	s.dbConn = conn
+	s.dbConn.SetMaxIdleConns(0)
 	s.service = NewService(conn, true, cfg)
 }
 
 func (s *ServiceRWTestSuite) TearDownSuite() {
+	assert.Equal(s.T(), 0, s.dbConn.Stats().OpenConnections, "open connections")
 	s.dbConn.Close()
 }
 
