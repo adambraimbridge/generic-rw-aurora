@@ -24,6 +24,7 @@ paths:
       last_modified: "@._timestamp"
       draft_ref: "@.x-request-id"
       origin_system: "@.x-origin-system-id"
+      content_type: "@.content-type"
       body: "$"
     primaryKey: uuid
     hasConflictDetection: false
@@ -32,3 +33,4 @@ paths:
         "X-Origin-System-Id": origin_system
         "Write-Request-Id": draft_ref
         "Last-Modified-RFC3339": last_modified
+        "Content-Type": content_type
