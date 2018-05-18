@@ -5,6 +5,5 @@
 *.dylib
 
 /vendor/*
-!/vendor/vendor.json
 
 .idea/
