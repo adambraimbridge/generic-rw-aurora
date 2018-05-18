@@ -69,6 +69,12 @@ var (
 			`drop table draft_content;
 		`,
 		},
+		{4, "add-content-type-draft-content-table",
+			`alter table draft_content add column content_type varchar(128) not null;
+		`,
+			`alter table draft_content drop column content_type;
+		`,
+		},
 	}
 	requiredVersion int64
 )
