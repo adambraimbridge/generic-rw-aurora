@@ -203,6 +203,10 @@ func (service *AuroraRWService) Read(ctx context.Context, tableName string, key 
 func (service *AuroraRWService) Write(ctx context.Context, tableName string, key string, doc Document, params map[string]string, previousDocHash string) (bool, string, error) {
 	ctx = context.WithValue(ctx, contextTable, tableName)
 	ctx = context.WithValue(ctx, contextDocumentKey, key)
+
+	writeLog := buildLogEntryFromContext(ctx)
+	writeLog.Info("Writing document to database")
+
 	table := service.rwConfig[tableName]
 	doc.Hash = hash(doc.Body)
 	var status bool
