@@ -143,10 +143,10 @@ func Write(service db.RWService, table string, timeout time.Duration) http.Handl
 			writer.Header().Set(documentHashHeader, statusHashTuple.hash)
 			if statusHashTuple.status == db.Created {
 				writer.WriteHeader(http.StatusCreated)
-				writeLog.Info("Document has ben created")
+				writeLog.Info("Document has been created")
 			} else {
 				writer.WriteHeader(http.StatusOK)
-				writeLog.Info("Document has ben updated")
+				writeLog.Info("Document has been updated")
 			}
 		}
 	}
