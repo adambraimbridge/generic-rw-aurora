@@ -209,7 +209,6 @@ func (s *ServiceRWTestSuite) TestWriteUpdateWithoutConflictDetection() {
 }
 
 func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflict() {
-	hook := logTest.NewGlobal()
 	testKey := uuid.NewV4().String()
 	testLastModified := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	testTID := "tid_testcreate"
@@ -236,7 +235,6 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithoutConflict() {
 
 	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
 
-	assert.Empty(s.T(), hook.AllEntries())
 }
 
 func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
@@ -289,7 +287,6 @@ func (s *ServiceRWTestSuite) TestWriteCreateWithConflict() {
 }
 
 func (s *ServiceRWTestSuite) TestUpdateWithoutConflict() {
-	hook := logTest.NewGlobal()
 	testKey := uuid.NewV4().String()
 
 	testTID1 := "tid_testupdate_1"
@@ -326,8 +323,6 @@ func (s *ServiceRWTestSuite) TestUpdateWithoutConflict() {
 	}
 
 	s.assertExpectedDataInDB(testKey, testKeyColumn, testTableWithConflictDetection, expectedValuePerCol)
-
-	assert.Empty(s.T(), hook.AllEntries())
 }
 
 func (s *ServiceRWTestSuite) TestUpdateWithConflict() {
