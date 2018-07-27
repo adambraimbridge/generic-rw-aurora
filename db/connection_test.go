@@ -37,7 +37,7 @@ func TestConnect(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	var actualOpenConnections int64
-	for i := 1; i < 100 * maxConnections; i++ {
+	for i := 1; i < 100*maxConnections; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

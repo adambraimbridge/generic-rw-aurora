@@ -12,6 +12,7 @@ import (
 	"github.com/Financial-Times/generic-rw-aurora/db"
 	tidutils "github.com/Financial-Times/transactionid-utils-go"
 	"github.com/husobee/vestigo"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -30,9 +31,9 @@ func Read(service db.RWService, table string, timeout time.Duration) http.Handle
 
 		responseCh := make(chan db.Document)
 		errorCh := make(chan error)
+		id := vestigo.Param(request, "id")
 
 		go func(responseCh chan db.Document, errorCh chan error) {
-			id := vestigo.Param(request, "id")
 			doc, err := service.Read(ctx, table, id)
 
 			if err != nil {
@@ -46,12 +47,16 @@ func Read(service db.RWService, table string, timeout time.Duration) http.Handle
 
 		writer.Header().Set("Content-Type", "application/json")
 
+		readLog := log.WithFields(log.Fields{tidutils.TransactionIDKey: txid, "key": id, "table": table})
+
 		select {
 		case <-ctx.Done():
+			readLog.Error("Document read request timed out")
 			writer.WriteHeader(http.StatusGatewayTimeout)
 			json.NewEncoder(writer).Encode(map[string]string{"message": "document read request timed out"})
 
 		case doc := <-responseCh:
+			readLog.Info("Document found, responding ...")
 			writer.Header().Set(documentHashHeader, doc.Hash)
 			for k, v := range doc.Metadata {
 				writer.Header().Set(k, v)
@@ -61,6 +66,7 @@ func Read(service db.RWService, table string, timeout time.Duration) http.Handle
 		case err := <-errorCh:
 			body := map[string]string{}
 			if err == sql.ErrNoRows {
+				readLog.Info("Document is missing")
 				writer.WriteHeader(http.StatusNotFound)
 				body["message"] = errNotFound
 			} else {
@@ -120,8 +126,11 @@ func Write(service db.RWService, table string, timeout time.Duration) http.Handl
 			responseCh <- statusHashTuple{status, hash}
 		}(responseCh, errorCh)
 
+		writeLog := log.WithFields(log.Fields{tidutils.TransactionIDKey: txid, "key": id, "table": table})
+
 		select {
 		case <-ctx.Done():
+			writeLog.Error("Document write request timed out")
 			writer.WriteHeader(http.StatusGatewayTimeout)
 			json.NewEncoder(writer).Encode(map[string]string{"message": "document write request timed out"})
 
@@ -134,8 +143,10 @@ func Write(service db.RWService, table string, timeout time.Duration) http.Handl
 			writer.Header().Set(documentHashHeader, statusHashTuple.hash)
 			if statusHashTuple.status == db.Created {
 				writer.WriteHeader(http.StatusCreated)
+				writeLog.Info("Document has been created")
 			} else {
 				writer.WriteHeader(http.StatusOK)
+				writeLog.Info("Document has been updated")
 			}
 		}
 	}

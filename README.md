@@ -23,7 +23,17 @@ Run with `-short` to skip database integration tests.
 To run database integration tests, you must set the environment variable `DB_TEST_URL` to a connection string for a MySQL database, with credentials that have privileges to create databases and users. The test cases will provision a test user `pac_test_user` and up-to-date schema in the database.
 
 
-To test locally run a local instance of mySql. Use the version specified in circleci config.
+_To test locally, run a local instance of mySql_
+
+Sample config from current circleci  [config.yml](.circleci/other_file.md) just testing purposes;
+```
+    docker run --name generic-rw-mysql-test --rm -d -e MYSQL_ROOT_PASSWORD=password -e MYSQL_DATABASE=pac -p 3306:3306 mysql:5.6
+    ...
+    ...
+    docker stop generic-rw-mysql-test
+```
+ 
+ Use the version specified in circleci config.
 e.g. export DB_TEST_URL=username:password@tcp(127.0.0.1:3306)/dbname
 
 ## Endpoints
