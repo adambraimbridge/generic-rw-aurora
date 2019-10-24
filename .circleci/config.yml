@@ -3,7 +3,7 @@ jobs:
   build:
     working_directory: /go/src/github.com/Financial-Times/generic-rw-aurora
     docker:
-      - image: golang:1.10
+      - image: golang:1
         environment:
           GOPATH: /go
           CIRCLE_TEST_REPORTS: /tmp/test-results
@@ -45,7 +45,7 @@ jobs:
   dockerfile:
     working_directory: /generic-rw-aurora
     docker:
-      - image: docker:1.12.6-git
+      - image: docker:18
     steps:
       - checkout
       - setup_docker_engine
