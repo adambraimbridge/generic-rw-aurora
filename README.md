@@ -7,11 +7,9 @@ Generic r/w app for Aurora
 ## How to build
 
 ```
-go get -u github.com/kardianos/govendor
 cd $GOPATH/src/github.com/Financial-Times
 git clone git@github.com:Financial-Times/generic-rw-aurora.git
 cd $GOPATH/src/github.com/Financial-Times/generic-rw-aurora
-govendor sync
 go build
 ```
 
