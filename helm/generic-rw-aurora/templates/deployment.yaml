@@ -1,27 +1,31 @@
+{{- if .Values.eksCluster }}
+apiVersion: apps/v1
+{{- else }}
 apiVersion: extensions/v1beta1
+{{- end }}
 kind: Deployment
 metadata:
-  name: {{ .Values.service.name }} 
+  name: {{ .Values.service.name }}
   labels:
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}" 
-    visualize: "true" 
-    app: {{ .Values.service.name }} 
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    visualize: "true"
+    app: {{ .Values.service.name }}
 spec:
-  replicas: {{ .Values.replicaCount }} 
-  selector: 
+  replicas: {{ .Values.replicaCount }}
+  selector:
     matchLabels:
       app: {{ .Values.service.name }}
   template:
     metadata:
       labels:
         app: {{ .Values.service.name }}
-        visualize: "true" 
+        visualize: "true"
     spec:
-      containers: 
-      - name: {{ .Values.service.name }} 
+      containers:
+      - name: {{ .Values.service.name }}
         image: "{{ .Values.image.repository }}:{{ .Chart.Version }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        env: 
+        env:
         - name: DB_CONNECTION_URL
           valueFrom:
             secretKeyRef:
@@ -38,16 +42,16 @@ spec:
               name: timeout-config
               key: generic-rw-aurora-timeout
         ports:
-        - containerPort: 8080 
-        livenessProbe: 
-          tcpSocket: 
-            port: 8080 
-          initialDelaySeconds: 10 
-        readinessProbe: 
-          httpGet: 
-            path: "/__gtg" 
-            port: 8080 
-          initialDelaySeconds: 15 
-          periodSeconds: 30 
-        resources: 
+        - containerPort: 8080
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+        readinessProbe:
+          httpGet:
+            path: "/__gtg"
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        resources:
 {{ toYaml .Values.resources | indent 12 }}
