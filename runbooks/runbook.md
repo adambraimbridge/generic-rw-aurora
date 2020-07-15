@@ -1,4 +1,4 @@
-# UPP - Generic read/write aurora
+# UPP - Generic Read/Write Aurora
 
 Reads and Writes records for PAC draft content and annotations to the PAC Aurora DB cluster.
 
@@ -59,10 +59,7 @@ No
 
 ## Dependencies
 
-- annotations-publisher
-- draft-annotations-api
-- pac-prod-eu
-- pac-prod-us
+- pac-aurora
 
 ## Failover Architecture Type
 
